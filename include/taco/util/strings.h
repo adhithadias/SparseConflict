@@ -8,10 +8,15 @@
 #include <iomanip>
 #include <limits>
 #include <cmath>
+#include <functional>
+
+#define PRINT_DEBUG 0
 
 // To get the value of a compiler macro variable
 #define STRINGIFY(x) #x
 #define TO_STRING(x) STRINGIFY(x)
+
+void executeIfDebug(const std::function<void()>& func);
 
 namespace taco {
 namespace util {

@@ -448,6 +448,8 @@ public:
   /// Set to true to perform the assemble and compute stages simultaneously.
   void setAssembleWhileCompute(bool assembleWhileCompute);
 
+  void setNewPath(bool newPath);
+
   /// Get the source code of the kernel functions.
   std::string getSource() const;
 
@@ -903,6 +905,7 @@ struct TensorBase::Content {
   ir::Stmt           assembleFunc;
   ir::Stmt           computeFunc;
   bool               assembleWhileCompute;
+  bool               newPath = false;
   std::shared_ptr<ir::Module> module;
 
   size_t             coordinateBufferUsed;

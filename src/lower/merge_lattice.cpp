@@ -22,9 +22,10 @@ namespace taco {
 class MergeLatticeBuilder : public IndexNotationVisitorStrict, public IterationAlgebraVisitorStrict {
 public:
   MergeLatticeBuilder(IndexVar i, Iterators iterators, ProvenanceGraph provGraph, std::set<IndexVar> definedIndexVars,
-                      std::map<TensorVar, const AccessNode *> whereTempsToResult = {})
+                      std::map<TensorVar, const AccessNode *> whereTempsToResult = {}, int loopType = 0, 
+                      std::vector<Access> accesses = {})
                       : i(i), iterators(iterators), provGraph(provGraph), definedIndexVars(definedIndexVars),
-                        whereTempsToResult(whereTempsToResult) {}
+                        whereTempsToResult(whereTempsToResult), loopType(loopType), accesses(accesses) {}
 
   MergeLattice build(IndexStmt stmt) {
     stmt.accept(this);
@@ -84,6 +85,8 @@ private:
   map<TensorVar,MergeLattice> latticesOfTemporaries;
   std::map<TensorVar, const AccessNode *> whereTempsToResult;
   map<Access, MergePoint> seenMergePoints;
+  int loopType;
+  std::vector<Access> accesses;
 
   MergeLattice modeIterationLattice() {
     return MergeLattice({MergePoint({iterators.modeIterator(i)}, {}, {})});
@@ -185,6 +188,30 @@ private:
 
   void visit(const AccessNode* access)
   {
+    // debugPrint("MergeLatticeBuilder::visit(const AccessNode* access)");
+    Access accessCopy = Access(access);
+    executeIfDebug([&]() {std::cout << "Access: " << accessCopy << std::endl;});
+    // debugPrint("Access: ", accessCopy, ", isForsome: ", loopType);
+    // std::cout << "Access: " << accessCopy << ", isForsome: " << loopType << std::endl;
+    if (loopType != 0) {
+      // check if AccessNode is in accesses
+      bool found = false;
+      executeIfDebug([&](){std::cout << "Accesses: ";});
+      for (auto& a : accesses) {
+        executeIfDebug([&](){std::cout << a << " ";});
+        if (a == accessCopy) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // return empty lattice
+        lattice = modeIterationLattice();
+        return;
+      }
+    }
+    executeIfDebug([&](){std::cout << "mergeLatticeBuilder::visit(const AccessNode* access) - after check" << std::endl;});
+
     // TODO: Case where Access is used in computation but not iteration algebra
     if(seenMergePoints.find(access) != seenMergePoints.end()) {
       lattice = MergeLattice({seenMergePoints.at(access)});
@@ -407,6 +434,16 @@ private:
   }
 
   void visit(const ForallNode* node) {
+    lattice = build(node->stmt);
+  }
+
+  void visit(const ForsomeNode* node) {
+    // taco_not_supported_yet;
+    lattice = build(node->stmt);
+  }
+
+  void visit(const ForsameNode* node) {
+    // taco_not_supported_yet;
     lattice = build(node->stmt);
   }
 
@@ -1004,6 +1041,7 @@ MergeLattice::MergeLattice(vector<MergePoint> points, set<set<Iterator>> regions
 
 MergeLattice MergeLattice::make(Forall forall, Iterators iterators, ProvenanceGraph provGraph, std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult)
 {
+  executeIfDebug([&](){std::cout << "MergeLattice::make forall: " << forall << std::endl;});
   // Can emit merge lattice once underived ancestor can be recovered
   IndexVar indexVar = forall.getIndexVar();
 
@@ -1012,18 +1050,43 @@ MergeLattice MergeLattice::make(Forall forall, Iterators iterators, ProvenanceGr
   vector<IndexVar> underivedAncestors = provGraph.getUnderivedAncestors(indexVar);
   for (auto ancestor : underivedAncestors) {
     if(!provGraph.isRecoverable(ancestor, definedIndexVars)) {
+      executeIfDebug([&](){std::cout << "MergeLattice::make, provGraph is not recoverable\n";});
       return MergeLattice({MergePoint({iterators.modeIterator(indexVar)}, {}, {})});
     }
   }
 
+  executeIfDebug([&](){std::cout << "MergeLattice::make, provGraph recoverable, Building merge lattice for forall " << indexVar << std::endl;});
   MergeLattice lattice = builder.build(forall.getStmt());
 
   // Can't remove points if lattice contains omitters since we lose merge cases during lowering.
   if(lattice.anyModeIteratorIsLeaf() && lattice.needExplicitZeroChecks()) {
+    executeIfDebug([&](){std::cout << "MergeLattice::make, Lattice contains any mode iterator that is a leaf, and needs explicit zero checks.\n";});
     return lattice;
   }
 
   // Loop lattice and case lattice are identical so simplify here
+  return lattice.getLoopLattice();
+}
+
+MergeLattice MergeLattice::make(Forsome forsome, Iterators iterators, ProvenanceGraph provGraph, std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult)
+{
+  IndexVar indexVar = forsome.getIndexVar();
+  executeIfDebug([&](){std::cout << "MergeLattice::make forsome: " << forsome << std::endl;});
+
+  MergeLatticeBuilder builder(indexVar, iterators, provGraph, definedIndexVars, whereTempsToResult, 1, forsome.getAccesses());
+
+  MergeLattice lattice = builder.build(forsome.getStmt());
+  return lattice.getLoopLattice();
+}
+
+MergeLattice MergeLattice::make(Forsame forsame, Iterators iterators, ProvenanceGraph provGraph, std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult)
+{
+  IndexVar indexVar = forsame.getIndexVar();
+  executeIfDebug([&](){std::cout << "MergeLattice::make forsame: " << forsame << std::endl;});
+
+  MergeLatticeBuilder builder(indexVar, iterators, provGraph, definedIndexVars, whereTempsToResult, 2, forsame.getAccesses());
+
+  MergeLattice lattice = builder.build(forsame.getStmt());
   return lattice.getLoopLattice();
 }
 
@@ -1341,14 +1404,14 @@ bool MergePoint::isOmitter() const {
 }
 
 ostream& operator<<(ostream& os, const MergePoint& mlp) {
-  os << "[";
+  os << "[iterators: ";
   os << util::join(mlp.iterators(), ", ");
   if (mlp.iterators().size() > 0) os << " ";
   os << "|";
-  os << " ";
+  os << " locators: ";
   os << util::join(mlp.locators(),  ", ");
   if (mlp.locators().size() > 0) os << " ";
-  os << "|";
+  os << "| results: ";
   if (mlp.results().size() > 0) os << " ";
   os << util::join(mlp.results(),   ", ");
 

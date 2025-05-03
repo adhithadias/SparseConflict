@@ -32,6 +32,7 @@
 #include "taco/util/collections.h"
 #include "taco/util/functions.h"
 #include "taco/util/env.h"
+#include "taco/util/algo.h"
 
 using namespace std;
 
@@ -451,6 +452,34 @@ struct Isomorphic : public IndexNotationVisitorStrict {
         anode->parallel_unit != bnode->parallel_unit ||
         anode->output_race_strategy != bnode->output_race_strategy ||
         anode->unrollFactor != bnode->unrollFactor) {
+      eq = false;
+      return;
+    }
+    eq = true;
+  }
+
+  void visit(const ForsomeNode* anode) {
+    if (!isa<ForsomeNode>(bStmt.ptr)) {
+      eq = false;
+      return;
+    }
+    auto bnode = to<ForsomeNode>(bStmt.ptr);
+    if (!check(anode->indexVar, bnode->indexVar) ||
+        !check(anode->stmt, bnode->stmt)) {
+      eq = false;
+      return;
+    }
+    eq = true;
+  }
+
+  void visit(const ForsameNode* anode) {
+    if (!isa<ForsameNode>(bStmt.ptr)) {
+      eq = false;
+      return;
+    }
+    auto bnode = to<ForsameNode>(bStmt.ptr);
+    if (!check(anode->indexVar, bnode->indexVar) ||
+        !check(anode->stmt, bnode->stmt)) {
       eq = false;
       return;
     }
@@ -910,6 +939,34 @@ struct Equals : public IndexNotationVisitorStrict {
         anode->parallel_unit != bnode->parallel_unit ||
         anode->output_race_strategy != bnode->output_race_strategy ||
         anode->unrollFactor != bnode->unrollFactor) {
+      eq = false;
+      return;
+    }
+    eq = true;
+  }
+
+  void visit(const ForsomeNode* anode) {
+    if (!isa<ForsomeNode>(bStmt.ptr)) {
+      eq = false;
+      return;
+    }
+    auto bnode = to<ForsomeNode>(bStmt.ptr);
+    if (anode->indexVar != bnode->indexVar ||
+        !equals(anode->stmt, bnode->stmt)) {
+      eq = false;
+      return;
+    }
+    eq = true;
+  }
+
+  void visit(const ForsameNode* anode) {
+    if (!isa<ForsameNode>(bStmt.ptr)) {
+      eq = false;
+      return;
+    }
+    auto bnode = to<ForsameNode>(bStmt.ptr);
+    if (anode->indexVar != bnode->indexVar ||
+        !equals(anode->stmt, bnode->stmt)) {
       eq = false;
       return;
     }
@@ -1805,13 +1862,14 @@ IndexStmt IndexStmt::concretizeScheduled(ProvenanceGraph provGraph, vector<Index
   return stmt;
 }
 
-IndexStmt IndexStmt::concretize() const {
+IndexStmt IndexStmt::concretize(bool newPath /*= false*/) const {
+  executeIfDebug([&]() {std::cout << "::concretize, newPath: " << newPath << std::endl;});
   IndexStmt stmt = *this;
   if (isEinsumNotation(stmt)) {
     stmt = makeReductionNotation(stmt);
   }
   if (isReductionNotation(stmt)) {
-    stmt = makeConcreteNotation(stmt);
+    stmt = makeConcreteNotation(stmt, newPath);
   }
   return stmt;
 }
@@ -2252,6 +2310,87 @@ template <> Forall to<Forall>(IndexStmt s) {
   return Forall(to<ForallNode>(s.ptr));
 }
 
+// class Some
+Forsome::Forsome(const ForsomeNode* n) : IndexStmt(n) {
+}
+
+Forsome::Forsome(IndexVar indexVar, IndexStmt stmt)
+	: Forsome(new ForsomeNode(indexVar, stmt)) {
+}
+
+Forsome::Forsome(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses)
+  : Forsome(new ForsomeNode(indexVar, stmt, accesses)) {
+}
+
+IndexVar Forsome::getIndexVar() const {
+	return getNode(*this)->indexVar;
+}
+
+IndexStmt Forsome::getStmt() const {
+	return getNode(*this)->stmt;
+}
+
+std::vector<Access> Forsome::getAccesses() const {
+  return getNode(*this)->accesses;
+}
+
+Forsome forsome(IndexVar i, IndexStmt stmt) {
+	return Forsome(i, stmt);
+}
+
+Forsome forsome(IndexVar i, IndexStmt stmt, std::vector<Access> accesses) {
+  return Forsome(i, stmt, accesses);
+}
+
+template <> bool isa<Forsome>(IndexStmt s) {
+	return isa<ForsomeNode>(s.ptr);
+}
+
+template <> Forsome to<Forsome>(IndexStmt s) {
+	taco_iassert(isa<Forsome>(s));
+	return Forsome(to<ForsomeNode>(s.ptr));
+}
+
+Forsame::Forsame(const ForsameNode* n) : IndexStmt(n) {
+}
+
+Forsame::Forsame(IndexVar indexVar, IndexStmt stmt)
+  : Forsame(new ForsameNode(indexVar, stmt)) {
+}
+
+Forsame::Forsame(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses)
+  : Forsame(new ForsameNode(indexVar, stmt, accesses)) {
+}
+
+IndexVar Forsame::getIndexVar() const {
+  return getNode(*this)->indexVar;
+}
+
+IndexStmt Forsame::getStmt() const {
+  return getNode(*this)->stmt;
+}
+
+std::vector<Access> Forsame::getAccesses() const {
+  return getNode(*this)->accesses;
+}
+
+Forsame forsame(IndexVar i, IndexStmt stmt) {
+  return Forsame(i, stmt);
+}
+
+Forsame forsame(IndexVar i, IndexStmt stmt, std::vector<Access> accesses) {
+  return Forsame(i, stmt, accesses);
+}
+
+template <> bool isa<Forsame>(IndexStmt s) {
+  return isa<ForsameNode>(s.ptr);
+}
+
+template <> Forsame to<Forsame>(IndexStmt s) {
+  taco_iassert(isa<Forsame>(s));
+  return Forsame(to<ForsameNode>(s.ptr));
+}
+
 
 // class Where
 Where::Where(const WhereNode* n) : IndexStmt(n) {
@@ -2484,6 +2623,13 @@ std::ostream& operator<<(std::ostream& os, const std::shared_ptr<IndexVarInterfa
     ss << *svar;
   });
   return os << ss.str();
+}
+
+std::string to_string(const IndexExpr& expr) {
+  std::stringstream ss;
+  IndexNotationPrinter printer(ss);
+  printer.print(expr);
+  return ss.str();
 }
 
 std::ostream& operator<<(std::ostream& os, const IndexVar& var) {
@@ -2913,6 +3059,19 @@ bool isConcreteNotation(IndexStmt stmt, std::string* reason) {
 
   ProvenanceGraph provGraph = ProvenanceGraph(stmt);
 
+  executeIfDebug([&]() {
+    std::cout << "provenanceGraph: " << std::endl;
+    for (auto& indexVar : provGraph.getAllIndexVars()) {
+      std::cout << "indexVar: " << indexVar << std::endl;
+      std::cout << "children:  ";
+      for (auto& child : provGraph.getChildren(indexVar)) {
+        std::cout << child << " ";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << "end provenanceGraph" << std::endl;
+  });
+
   match(stmt,
     std::function<void(const ForallNode*,Matcher*)>([&](const ForallNode* op,
                                                         Matcher* ctx) {
@@ -2930,6 +3089,7 @@ bool isConcreteNotation(IndexStmt stmt, std::string* reason) {
           *reason = "all variables in concrete notation must be bound by a "
                     "forall statement";
           isConcrete = false;
+          
         }
       }
     }),
@@ -3002,6 +3162,22 @@ bool isConcreteNotation(IndexStmt stmt, std::string* reason) {
         isConcrete = false;
         return;
       }
+    }),
+    std::function<void(const ForsomeNode*, Matcher*)>([&](const ForsomeNode* op,
+      Matcher* ctx) {
+      boundVars.scope();
+      boundVars.insert({op->indexVar});
+      definedVars.insert(op->indexVar);
+      ctx->match(op->stmt);
+      boundVars.unscope();
+    }),
+    std::function<void(const ForsameNode*, Matcher*)>([&](const ForsameNode* op,
+      Matcher* ctx) {
+      boundVars.scope();
+      boundVars.insert({op->indexVar});
+      definedVars.insert(op->indexVar);
+      ctx->match(op->stmt);
+      boundVars.unscope();
     })
   );
   return isConcrete;
@@ -3022,6 +3198,7 @@ Assignment makeReductionNotation(Assignment assignment) {
     bool onlyOneTerm;
 
     IndexExpr addReductions(IndexExpr expr) {
+      executeIfDebug([&]() {std::cout << "MakeReductionNotation addReductions: " << expr << std::endl;});
       auto vars = getIndexVars(expr);
       for (auto& var : util::reverse(vars)) {
         if (!util::contains(free, var)) {
@@ -3032,6 +3209,7 @@ Assignment makeReductionNotation(Assignment assignment) {
     }
 
     IndexExpr einsum(const IndexExpr& expr) {
+      executeIfDebug([&]() {std::cout << "MakeReductionNotation einsum: " << expr << std::endl;});
       onlyOneTerm = true;
       IndexExpr einsumexpr = rewrite(expr);
 
@@ -3123,7 +3301,8 @@ struct ReplaceReductionsWithWheres : IndexNotationRewriter {
   }
 };
 
-IndexStmt makeConcreteNotation(IndexStmt stmt) {
+IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
+  executeIfDebug([&](){std::cout << "makeConcreteNotation: " << stmt << std::endl;});
   std::string reason;
   taco_iassert(isReductionNotation(stmt, &reason))
       << "Not reduction notation: " << stmt << std::endl << reason;
@@ -3131,6 +3310,12 @@ IndexStmt makeConcreteNotation(IndexStmt stmt) {
 
   // Free variables and reductions covering the whole rhs become top level loops
   vector<IndexVar> freeVars = to<Assignment>(stmt).getFreeVars();
+  executeIfDebug([&]() {
+    for (size_t i = 0; i < freeVars.size(); i++) {
+      std::cout << "freeVars[" << i << "]: " << freeVars[i] << std::endl;
+    }
+    std::cout << "freeVars.size(): " << freeVars.size() << std::endl;
+  });
 
   struct RemoveTopLevelReductions : IndexNotationRewriter {
     using IndexNotationRewriter::visit;
@@ -3163,14 +3348,208 @@ IndexStmt makeConcreteNotation(IndexStmt stmt) {
       }
     }
   };
+
+  executeIfDebug([&]() {std::cout << "RemoveTopLevelReductions: " << stmt << std::endl;});
+
+  struct FusedLoop : IndexNotationRewriter {
+    vector<IndexVar> freeVars;
+    bool outputIsSparse;
+
+    FusedLoop() {}
+    using IndexNotationRewriter::visit;
+
+    void visit(const AssignmentNode* node) {
+      // Easiest to just walk down the reduction node until we find something
+      // that's not a reduction
+      executeIfDebug([&]() {std::cout << "FusedLoop: AssignmentNode\n";});
+      vector<IndexVar> topLevelReductions;
+      IndexExpr rhs = node->rhs;
+      IndexExpr reductionOp;
+      while (isa<Reduction>(rhs)) {
+        Reduction reduction = to<Reduction>(rhs);
+        executeIfDebug([&]() {std::cout << "reduction: " << reduction << std::endl;});
+        // Hack: explicit reductions with user defined functions shouldn't be rewritten.
+        if (util::getFromEnv("TACO_CONCRETIZE_HACK", "0") != "0" && isa<Call>(reduction.getOp())) {
+          break;
+        }
+        topLevelReductions.push_back(reduction.getVar());
+        rhs = reduction.getExpr();
+        reductionOp = reduction.getOp();
+      }
+
+      Access lhs = node->lhs;
+      freeVars = lhs.getIndexVars();
+      outputIsSparse = taco::util::isSparse(lhs.getTensorVar());
+      executeIfDebug([&]() {std::cout << "makeConcreteNotation::outputIsSparse: " << outputIsSparse << std::endl;});
+
+      if (rhs != node->rhs) {
+        stmt = Assignment(node->lhs, rhs, reductionOp);
+        // for (auto& i : util::reverse(topLevelReductions)) {
+        //   stmt = forall(i, stmt);
+        // }
+        executeIfDebug([&]() {std::cout << "rhs != node->rhs stmt: " << stmt << std::endl;});
+      }
+      else {
+        stmt = node;
+        executeIfDebug([&]() {std::cout << "rhs == node->rhs stmt: " << stmt << std::endl;});
+      }
+
+      struct AccumulateIndexPatterns : IndexNotationVisitor {
+        using IndexNotationVisitor::visit;
+        vector<vector<IndexVar>> constraints;
+        // map<TensorVar, vector<IndexVar>> mapIndexVars;
+
+        void visit(const AccessNode* op) {
+          Access acc = Access(op);
+          // check if access node is sparse
+          if (taco::util::isSparse(op->tensorVar)) {
+            // mapIndexVars[op->tensorVar] = op->indexVars;
+            constraints.push_back(op->indexVars);
+            executeIfDebug([&]() {std::cout << "Sparse access node: " << acc << "\n";});
+          }
+        }
+      };
+    
+      AccumulateIndexPatterns accPat = AccumulateIndexPatterns();
+      accPat.visit(rhs);
+
+      set<vector<IndexVar>> allSCS;
+      if (outputIsSparse) {
+        // indices in the output should appear first
+        // accPat.mapIndexVars[node->lhs.getTensorVar()] = node->lhs.getIndexVars();
+        allSCS = taco::util::getAllSCS(accPat.constraints, freeVars);
+      } else {
+        // indices in the output can appear anywhere
+        allSCS = taco::util::getAllSCS(accPat.constraints, {});
+      }
+
+      executeIfDebug([&]() {
+        printSequences(allSCS);
+      });
+      // TODO: pick the best one, for now just pick the first
+      vector<IndexVar> scs = *allSCS.begin();
+      executeIfDebug([&]() {
+      std::cout << "selected sequence: ";
+      printSequence(scs);
+      });
+
+      struct TensorAccessToIndices : IndexNotationVisitor {
+        using IndexNotationVisitor::visit;
+        vector<vector<Access>> accessMap;
+        vector<IndexVar> scs;
+        // set<IndexVar> duplicateIndices;
+
+        TensorAccessToIndices(vector<IndexVar> &scs) 
+          : scs(scs) {
+          accessMap.resize(scs.size());
+        }
+
+        void visit(const AccessNode* op) {
+          Access acc = Access(op);
+          // check if access node is sparse
+          if (taco::util::isSparse(op->tensorVar)) {
+            // iterate through indexVars
+            size_t ptr = 0;
+            for (size_t i = 0; i < op->indexVars.size(); i++) {
+              IndexVar idx = op->indexVars[i];
+              assert(std::find(scs.begin(), scs.end(), idx) != scs.end());
+              while (ptr < scs.size() && scs[ptr] != idx) {
+                ptr++;
+              }
+              // assert (ptr < scs.size());
+              // if (duplicateIndices.count(scs[ptr])) {
+              //   accessMap[ptr].push_back(acc);
+              // }
+              accessMap[ptr].push_back(acc);
+            }
+          } else {
+            for (size_t i = 0; i < op->indexVars.size(); i++) {
+              IndexVar idx = op->indexVars[i];
+              auto it = std::find(scs.begin(), scs.end(), idx);
+              assert(it != scs.end());
+              accessMap[it - scs.begin()].push_back(acc);
+            }
+          }
+        }
+      };
+
+      TensorAccessToIndices latticeMap = TensorAccessToIndices(scs);
+      latticeMap.visit(rhs);
+      latticeMap.visit(lhs);
+
+      executeIfDebug([&]() {
+        // print latticeMap.accessMap;
+        for (size_t i = 0; i < latticeMap.accessMap.size(); i++) {
+          std::cout << "accessMap[" << scs[i] << "]: ";
+          for (auto &acc : latticeMap.accessMap[i]) {
+            std::cout << acc << " ";
+          }
+          std::cout << std::endl;
+        }
+      });
+
+      set<IndexVar> duplicateIndices;
+      set<IndexVar> seenIndices;
+      map<IndexVar, int> indexVarCount;
+      for (auto &idx : scs) {
+        indexVarCount[idx]++;
+        if (seenIndices.count(idx)) {
+          duplicateIndices.insert(idx);
+        }
+        seenIndices.insert(idx);
+      }
+
+      executeIfDebug([&]() {
+        // print indexVarCount
+        std::cout << "indexVarCount: ";
+        for (auto &idx : indexVarCount) {
+          std::cout << idx.first << ": " << idx.second << " ";
+        }
+        std::cout << std::endl;
+      });
+
+      // for (auto &idx : util::reverse(scs)) {
+      for (int i = scs.size() - 1; i >= 0; i--) {
+        auto &idx = scs[i];
+        if (duplicateIndices.count(idx)) {
+          if (indexVarCount[idx] > 1) {
+            stmt = forsame(idx, stmt, latticeMap.accessMap[i]);
+            indexVarCount[idx]--;
+          } else {
+            stmt = forsome(idx, stmt, latticeMap.accessMap[i]);
+          }
+        } else {
+          stmt = forall(idx, stmt);
+        }
+      }
+
+      executeIfDebug([&]() {std::cout << "statment: " << stmt << std::endl;});
+    }
+
+  };
+
+  executeIfDebug([&](){std::cout << "FusedLoop: " << stmt << std::endl;});
+
+  if (!newPath) {
+    executeIfDebug([&](){std::cout << "not new path\n";});
   stmt = RemoveTopLevelReductions().rewrite(stmt);
 
   for (auto& i : util::reverse(freeVars)) {
     stmt = forall(i, stmt);
   }
 
+  executeIfDebug([&](){std::cout << "makeConcreteNotation: forsome statement created\n";});
   stmt = ReplaceReductionsWithWheres().rewrite(stmt);
+  executeIfDebug([&](){std::cout << "ReplaceReductionsWithWheres statement created\n";});
   return stmt;
+  } else {
+    executeIfDebug([&](){std::cout << "new code path\n";
+    std::cout << "makeConcreteNotation: newPath\n";
+    });
+    stmt = FusedLoop().rewrite(stmt);
+    executeIfDebug([&](){std::cout << "FusedLoop statement created\n";});
+    return stmt;
+  }
 }
 
 Assignment makeReductionNotationScheduled(Assignment assignment, ProvenanceGraph provGraph) {
@@ -3643,6 +4022,22 @@ struct GetIndexVars : IndexNotationVisitor {
   }
 
   void visit(const AccessNode* node) {
+    executeIfDebug([&](){
+      std::cout << "GetIndexVars AccessNode: " << node << std::endl;
+      std::cout << "mode order: " << node->tensorVar.getFormat() << std::endl;
+      std::cout << "indexVars: " << node->indexVars << std::endl;
+      for (auto& var : node->indexVars) {
+        std::cout << "var: " << var << std::endl;
+      }
+      for (auto &mo : node->tensorVar.getFormat().getModeFormats()) {
+        std::cout << "mo: " << mo << std::endl;
+        if (ModeFormat::Compressed == mo) {
+          std::cout << "compressed mode: " << mo << std::endl;
+        } else {
+          std::cout << "dense mode: " << mo << std::endl;
+        }
+      }
+    });
     add(node->indexVars);
   }
 
@@ -4039,6 +4434,32 @@ private:
     }
     else {
       stmt = new ForallNode(op->indexVar, body, op->merge_strategy, op->parallel_unit, op->output_race_strategy, op->unrollFactor);
+    }
+  }
+
+  void visit(const ForsomeNode* op) {
+    IndexStmt body = rewrite(op->stmt);
+    if (!body.defined()) {
+      stmt = IndexStmt();
+    }
+    else if (body == op->stmt) {
+      stmt = op;
+    }
+    else {
+      stmt = new ForsomeNode(op->indexVar, body);
+    }
+  }
+
+  void visit(const ForsameNode* op) {
+    IndexStmt body = rewrite(op->stmt);
+    if (!body.defined()) {
+      stmt = IndexStmt();
+    }
+    else if (body == op->stmt) {
+      stmt = op;
+    }
+    else {
+      stmt = new ForsameNode(op->indexVar, body);
     }
   }
 

@@ -66,6 +66,11 @@ protected:
   /// Lower a yield statement.
   virtual ir::Stmt lowerYield(Yield yield) = 0;
 
+  /// Lower a forsome statement.
+  virtual ir::Stmt lowerForsome(Forsome forsome) = 0;
+
+  /// Lower a forsame statement.
+  virtual ir::Stmt lowerForsame(Forsame forsame) = 0;
 
   /// Lower a forall statement.
   virtual ir::Stmt lowerForall(Forall forall) = 0;

@@ -62,6 +62,8 @@ struct IndexVarNode;
 struct AssignmentNode;
 struct YieldNode;
 struct ForallNode;
+struct ForsomeNode;
+struct ForsameNode;
 struct WhereNode;
 struct SequenceNode;
 struct AssembleNode;
@@ -217,6 +219,8 @@ public:
 
   /// Print the index expression.
   friend std::ostream& operator<<(std::ostream&, const IndexExpr&);
+
+  friend std::string to_string(const IndexExpr&);
 };
 
 /// Check if two index expressions are isomorphic.
@@ -613,7 +617,7 @@ public:
   std::map<IndexVar,Dimension> getIndexVarDomains() const;
 
   /// Takes any index notation and concretizes unknowns to make it concrete notation
-  IndexStmt concretize() const;
+  IndexStmt concretize(bool newPath = false) const;
 
   /// Takes any index notation and concretizes unknowns to make it concrete notation
   /// given a Provenance Graph of indexVars
@@ -908,6 +912,49 @@ public:
 Forall forall(IndexVar i, IndexStmt stmt);
 Forall forall(IndexVar i, IndexStmt stmt, MergeStrategy merge_strategy, ParallelUnit parallel_unit, OutputRaceStrategy output_race_strategy, size_t unrollFactor = 0);
 
+/// A forsome statement partially binds an index variable to values that will 
+/// later bind using forsame statement, and evaluates the
+/// sub-statement for each of these values.
+class Forsome : public IndexStmt {
+public:
+  Forsome() = default;
+  Forsome(const ForsomeNode*);
+  Forsome(IndexVar indexVar, IndexStmt stmt);
+  Forsome(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses);
+
+  IndexVar getIndexVar() const;
+  IndexStmt getStmt() const;
+  std::vector<Access> getAccesses() const;
+
+  typedef ForsomeNode Node;
+};
+
+/// Create a some index statement.
+Forsome forsome(IndexVar i, IndexStmt stmt);
+
+Forsome forsome(IndexVar i, IndexStmt stmt, std::vector<Access> accesses);
+
+/// A forsame statement partially binds an index variable to values that were 
+/// previously bound in a forsome statement and evaluates the sub-statement for
+/// each of these values.
+class Forsame : public IndexStmt {
+public:
+  Forsame() = default;
+  Forsame(const ForsameNode*);
+  Forsame(IndexVar indexVar, IndexStmt stmt);
+  Forsame(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses);
+
+  IndexVar getIndexVar() const;
+  IndexStmt getStmt() const;
+  std::vector<Access> getAccesses() const;
+
+  typedef ForsameNode Node;
+};
+
+/// Create a forsame index statement.
+Forsame forsame(IndexVar i, IndexStmt stmt);
+
+Forsame forsame(IndexVar i, IndexStmt stmt, std::vector<Access> accesses);
 
 /// A where statment has a producer statement that binds a tensor variable in
 /// the environment of a consumer statement.
@@ -1274,7 +1321,7 @@ IndexStmt makeReductionNotation(IndexStmt);
 /// Convert reduction notation to concrete notation, by inserting forall nodes,
 /// replacing reduction nodes by compound assignments, and inserting temporaries
 /// as needed.
-IndexStmt makeConcreteNotation(IndexStmt);
+IndexStmt makeConcreteNotation(IndexStmt, bool newPath = false);
 
 
 /// Convert einsum notation to reduction notation, by applying Einstein's

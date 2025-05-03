@@ -50,6 +50,12 @@ public:
           std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult = {});
 
 
+  static MergeLattice make(Forsome forsome, Iterators iterators, ProvenanceGraph provGraph,
+          std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult = {});
+
+  static MergeLattice make(Forsame forsame, Iterators iterators, ProvenanceGraph provGraph,
+          std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult = {});
+
   /**
    * Removes lattice points whose iterators are identical to the iterators of an earlier point, since we have
    * already iterated over this sub-space.

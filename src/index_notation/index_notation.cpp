@@ -3543,6 +3543,128 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
         }
       }
 
+      // check if there are forsome nodes that only iterates over the output tensor
+      struct CheckForsomeOutputOnly : IndexNotationVisitor {
+        using IndexNotationVisitor::visit;
+
+        Access lhs;
+        bool outputIsSparse;
+        bool hasOutputOnlyForsome;
+        uint8_t count;
+        Forsome foundForsome;
+
+        CheckForsomeOutputOnly(Access lhs, bool outputIsSparse) 
+          : lhs(lhs), outputIsSparse(outputIsSparse), hasOutputOnlyForsome(false), count(0) {
+          taco_iassert(lhs.defined());
+        }
+
+        void visit(const ForsomeNode* op) {
+          // check if there is only one access in op->accesses and it is the lhs
+          if (op->accesses.size() == 1 && op->accesses[0] == lhs && outputIsSparse) {
+            hasOutputOnlyForsome = true;
+            count++;
+            foundForsome = Forsome(op);
+          }
+
+        }
+
+      };
+
+      CheckForsomeOutputOnly checkFOS = CheckForsomeOutputOnly(lhs, outputIsSparse);
+      checkFOS.visit(stmt);
+      executeIfDebug([&]() {std::cout << "checkFOS.hasOutputOnlyForsome: " << checkFOS.hasOutputOnlyForsome << std::endl;});
+
+      if (checkFOS.count == 1 && checkFOS.hasOutputOnlyForsome) {
+        executeIfDebug([&]() {std::cout << "removing forsome that only iterates over output tensor\n";});
+
+        // need to convert forsome to where, and for
+        Forsome fos = checkFOS.foundForsome;
+        IndexVar idx = fos.getIndexVar();
+
+        // get dimension of idx from the lhs
+        int idxPos = -1;
+        for (size_t i = 0; i < lhs.getIndexVars().size(); i++) {
+          if (lhs.getIndexVars()[i] == idx) {
+            idxPos = i;
+            break;
+          }
+        }
+        taco_iassert(idxPos != -1);
+        Dimension dim = lhs.getTensorVar().getType().getShape().getDimension(idxPos);
+        TensorVar tmp = TensorVar("t" + util::toString(idx), Type(lhs.getDataType(), {dim}), taco::dense);
+
+        IndexStmt inner = fos.getStmt();
+        
+        // change the inner statement such that all forsame nodes with idx are changed to forall
+        // the output of the assignment should be changed to tmp
+        struct ChangeForsameToForall : IndexNotationRewriter {
+          using IndexNotationRewriter::visit;
+          IndexVar idx;
+          TensorVar tmp;
+          ChangeForsameToForall(IndexVar idx, TensorVar tmp) : idx(idx), tmp(tmp) {}
+
+          void visit(const ForsameNode* op) {
+            executeIfDebug([&]() {
+              std::cout << "ChangeForsameToForall: ForsameNode\n";
+              std::cout << "op: " << Forsame(op) << std::endl;});
+            if (op->indexVar == idx) {
+              // change to forall
+              stmt = forall(op->indexVar, rewrite(op->stmt));
+            } else {
+              stmt = op;
+            }
+          }
+
+          void visit(const AssignmentNode* op) {
+            // change the lhs to tmp
+            Access oldLhs = op->lhs;
+            Access newLhs = Access(tmp, {idx});
+            stmt = Assignment(newLhs, rewrite(op->rhs), op->op);
+          }
+        };
+
+        inner = ChangeForsameToForall(idx, tmp).rewrite(inner);
+        Access newRhs = Access(tmp, {idx});
+        IndexStmt consumer = Assignment(lhs, newRhs, node->op);
+        consumer = forall(idx, consumer);
+        IndexStmt whereStmt = where(consumer, inner);
+
+        // IndexStmt consumer = Forall(idx, IndexStmt());
+
+        executeIfDebug([&]() {
+          std::cout << "idx: " << idx << std::endl;
+          std::cout << "producer: " << inner << std::endl;
+          std::cout << "t: " << tmp << std::endl;
+          std::cout << "consumer: " << consumer << std::endl;
+          std::cout << "whereStmt: " << whereStmt << std::endl;
+
+        });
+
+        // now rewrite the stmt to have whereStmt instead of fos
+        struct ReplaceForsomeWithWhere : IndexNotationRewriter {
+          using IndexNotationRewriter::visit;
+          Forsome target;
+          IndexStmt replacement;
+          ReplaceForsomeWithWhere(Forsome target, IndexStmt replacement)
+            : target(target), replacement(replacement) {}
+
+          void visit(const ForsomeNode* op) {
+            executeIfDebug([&]() {
+              std::cout << "ReplaceForsomeWithWhere: ForsomeNode\n";
+              std::cout << "op: " << Forsome(op) << std::endl;});
+            if (Forsome(op) == target) {
+              stmt = replacement;
+            } else {
+              stmt = op;
+            }
+
+          }
+        };
+
+        stmt = ReplaceForsomeWithWhere(fos, whereStmt).rewrite(stmt);
+
+      }
+
       executeIfDebug([&]() {std::cout << "statment: " << stmt << std::endl;});
     }
 

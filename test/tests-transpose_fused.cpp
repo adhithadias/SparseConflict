@@ -183,15 +183,15 @@ TEST(transposefused, sspmm) {
 
   A(i, j) = B(i, k) * C(k, j);
 
-  IndexStmt stmt = A.getAssignment().concretize();
+  IndexStmt stmt = A.getAssignment().concretize(true);
   // IndexStmt stmt = forall(i, forall(j, forall(i, A(i, j) = B(i, j) * C(j, i))));
 
   std::cout << "here: " <<  stmt << std::endl;
 
-  // A.setNewPath(true);
-  // A.compile(stmt, false);
-  // A.assemble();
-  // A.compute();
+  A.setNewPath(true);
+  A.compile(stmt, false);
+  A.assemble();
+  A.compute();
 }
 
 TEST(transposefused, 3dfuse) {

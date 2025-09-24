@@ -497,6 +497,18 @@ std::ostream& operator<<(std::ostream& os, const Iterator& iterator) {
   return os << iterator.getTensor() << "(p: " << iterator.getParent() << ")";
 }
 
+std::ostream& operator<<(std::ostream& os, const vector<Iterator>& iterators) {
+  os << "[";
+  for (size_t i = 0; i < iterators.size(); i++) {
+    os << iterators[i];
+    if (i != iterators.size() - 1) {
+      os << ", \n";
+    }
+  }
+  os << "]";
+  return os;
+}
+
 std::ostream& operator<<(std::ostream& os, const Iterators& iterators) {
   os << "-- Iterators --\n";
   os << "Level Iterators: ";

@@ -662,6 +662,7 @@ LowererImplImperative::splitAppenderAndInserters(const vector<Iterator>& results
 Stmt LowererImplImperative::lowerForsome(Forsome forsome)
 {
   executeIfDebug([&]{std::cout << "lowerForsome: Lowering Forsome: " << forsome << std::endl;});
+  executeIfDebug([&]{std::cout << "lowerForsome: iterators:" << iterators << std::endl;});
 
   MergeLattice caseLattice = MergeLattice::make(forsome, iterators, provGraph, definedIndexVars, whereTempsToResult);
 
@@ -697,6 +698,7 @@ Stmt LowererImplImperative::lowerForsome(Forsome forsome)
     vector<Iterator> locators = point.locators();
 
     executeIfDebug([&]{
+      
       std::cout << "lowerForsome: caseLattice is unique and only one iterator" << std::endl;
       std::cout << "lowerForsome: loopLattice: " << loopLattice << std::endl;
       std::cout << "lowerForsome: point: " << point << std::endl;
@@ -1668,7 +1670,7 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
   });
 
   // see example taco_binarySearchBefore
-  Expr searchcall = taco::ir::Call::make("taco_search", {iterator.getMode().getModePack().getArray(1), startBound, endBound, coordinate}, taco::Int32);
+  Expr searchcall = taco::ir::Call::make("index_search", {iterator.getMode().getModePack().getArray(1), startBound, endBound, coordinate}, taco::Int32);
   executeIfDebug([&]{std::cout << "::lowerForsamePosition, startBoundCall: " << searchcall << std::endl;});
 
   Expr found = ir::Var::make("index_found", taco::Int32, false, false, false);
@@ -1733,7 +1735,9 @@ Stmt LowererImplImperative::lowerForallDimension(Forall forall,
                                        set<Access> reducedAccesses,
                                        ir::Stmt recoveryStmt)
 {
-  executeIfDebug([&]{std::cout << "::lowerForallDimension, Lowering dimension loop" << std::endl;});
+  executeIfDebug([&]{std::cout << "::lowerForallDimension, Lowering dimension loop: " << forall << std::endl;});
+  executeIfDebug([&]{std::cout << "::lowerForallDimension, recoveryStmt: " << recoveryStmt << std::endl;});
+  executeIfDebug([&]{std::cout << "::lowerForallDimension, locators: " << locators << std::endl;});
   Expr coordinate = getCoordinateVar(forall.getIndexVar());
 
   if (forall.getParallelUnit() != ParallelUnit::NotParallel && forall.getOutputRaceStrategy() == OutputRaceStrategy::Atomics) {

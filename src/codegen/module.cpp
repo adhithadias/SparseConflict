@@ -157,11 +157,11 @@ string Module::compile() {
   // write out the shims
   writeShims(funcs, tmpdir, libname);
 
-  // string cmd2 = "mkdir -p ./tmp && cp " + prefix + file_ending + " ./tmp/" + libname + file_ending;
+  string cmd2 = "mkdir -p ./tmp && cp " + prefix + file_ending + " ./tmp/" + libname + file_ending;
 
-  // int err2 = system(cmd2.data());
-  // taco_uassert(err2 == 0) << "Compilation command failed:\n" << cmd2
-  //   << "\nreturned " << err2;
+  int err2 = system(cmd2.data());
+  taco_uassert(err2 == 0) << "Compilation command failed:\n" << cmd2
+    << "\nreturned " << err2;
   
   // now compile it
   int err = system(cmd.data());

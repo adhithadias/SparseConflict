@@ -257,6 +257,13 @@ void IndexNotationPrinter::visit(const ForsomeNode* op) {
       os << "; ";
     }
   }
+  os << "} xx {";
+  for (auto iter = op->nonAccesses.begin(); iter != op->nonAccesses.end(); ++iter) {
+    os << *iter;
+    if (iter + 1 != op->nonAccesses.end()) {
+      os << "; ";
+    }
+  }
   os << "}, ";
   op->stmt.accept(this);
   os << ")";

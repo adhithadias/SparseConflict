@@ -2318,8 +2318,9 @@ Forsome::Forsome(IndexVar indexVar, IndexStmt stmt)
 	: Forsome(new ForsomeNode(indexVar, stmt)) {
 }
 
-Forsome::Forsome(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses)
-  : Forsome(new ForsomeNode(indexVar, stmt, accesses)) {
+Forsome::Forsome(IndexVar indexVar, IndexStmt stmt, 
+  std::vector<Access> accesses, std::vector<Access> nonAccesses)
+  : Forsome(new ForsomeNode(indexVar, stmt, accesses, nonAccesses)) {
 }
 
 IndexVar Forsome::getIndexVar() const {
@@ -2334,12 +2335,17 @@ std::vector<Access> Forsome::getAccesses() const {
   return getNode(*this)->accesses;
 }
 
+std::vector<Access> Forsome::getNonAccesses() const {
+  return getNode(*this)->nonAccesses;
+}
+
 Forsome forsome(IndexVar i, IndexStmt stmt) {
 	return Forsome(i, stmt);
 }
 
-Forsome forsome(IndexVar i, IndexStmt stmt, std::vector<Access> accesses) {
-  return Forsome(i, stmt, accesses);
+Forsome forsome(IndexVar i, IndexStmt stmt, std::vector<Access> accesses,
+  std::vector<Access> nonAccesses) {
+  return Forsome(i, stmt, accesses, nonAccesses);
 }
 
 template <> bool isa<Forsome>(IndexStmt s) {
@@ -3511,12 +3517,26 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
       // for (auto &idx : util::reverse(scs)) {
       for (int i = scs.size() - 1; i >= 0; i--) {
         auto &idx = scs[i];
+        auto accesses = latticeMap.accessMap[i];
+        auto nonAccesses = std::vector<Access>();
+
         if (duplicateIndices.count(idx)) {
+
+          for (int j = scs.size() - 1; j >= 0; j--) {
+            auto &idx2 = scs[j];
+            if (j != i && idx == idx2) {
+              // add latticeMap.accessMap[j] to nonAccesses
+              for (auto &acc : latticeMap.accessMap[j]) {
+                nonAccesses.push_back(acc);
+              }
+            }
+          }
+
           if (indexVarCount[idx] > 1) {
-            stmt = forsame(idx, stmt, latticeMap.accessMap[i]);
+            stmt = forsame(idx, stmt, accesses);
             indexVarCount[idx]--;
           } else {
-            stmt = forsome(idx, stmt, latticeMap.accessMap[i]);
+            stmt = forsome(idx, stmt, accesses, nonAccesses);
           }
         } else {
           stmt = forall(idx, stmt);
@@ -3532,16 +3552,16 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
 
   if (!newPath) {
     executeIfDebug([&](){std::cout << "not new path\n";});
-  stmt = RemoveTopLevelReductions().rewrite(stmt);
+    stmt = RemoveTopLevelReductions().rewrite(stmt);
 
-  for (auto& i : util::reverse(freeVars)) {
-    stmt = forall(i, stmt);
-  }
+    for (auto& i : util::reverse(freeVars)) {
+      stmt = forall(i, stmt);
+    }
 
-  executeIfDebug([&](){std::cout << "makeConcreteNotation: forsome statement created\n";});
-  stmt = ReplaceReductionsWithWheres().rewrite(stmt);
-  executeIfDebug([&](){std::cout << "ReplaceReductionsWithWheres statement created\n";});
-  return stmt;
+    executeIfDebug([&](){std::cout << "makeConcreteNotation: forsome statement created\n";});
+    stmt = ReplaceReductionsWithWheres().rewrite(stmt);
+    executeIfDebug([&](){std::cout << "ReplaceReductionsWithWheres statement created\n";});
+    return stmt;
   } else {
     executeIfDebug([&](){std::cout << "new code path\n";
     std::cout << "makeConcreteNotation: newPath\n";

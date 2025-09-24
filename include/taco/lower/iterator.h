@@ -220,6 +220,7 @@ public:
   friend bool operator==(const Iterator&, const Iterator&);
   friend bool operator<(const Iterator&, const Iterator&);
   friend std::ostream& operator<<(std::ostream&, const Iterator&);
+  friend std::ostream& operator<<(std::ostream&, const std::vector<Iterator>&);
 
 private:
   struct Content;

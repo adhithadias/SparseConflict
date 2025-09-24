@@ -10,7 +10,7 @@
 #include <cmath>
 #include <functional>
 
-#define PRINT_DEBUG 0
+#define PRINT_DEBUG 1
 
 // To get the value of a compiler macro variable
 #define STRINGIFY(x) #x

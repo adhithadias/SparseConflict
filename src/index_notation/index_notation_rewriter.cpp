@@ -196,7 +196,7 @@ void IndexNotationRewriter::visit(const ForsomeNode* op) {
     stmt = op;
   }
   else {
-    stmt = new ForsomeNode(op->indexVar, s);
+    stmt = new ForsomeNode(op->indexVar, s, op->accesses, op->nonAccesses);
   }
 }
 
@@ -206,7 +206,7 @@ void IndexNotationRewriter::visit(const ForsameNode* op) {
     stmt = op;
   }
   else {
-    stmt = new ForsameNode(op->indexVar, s);
+    stmt = new ForsameNode(op->indexVar, s, op->accesses);
   }
 }
 

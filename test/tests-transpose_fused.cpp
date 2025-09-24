@@ -88,7 +88,7 @@ TEST(transposefused, dummy2) {
 }
 
 
-TEST(transposefused, dummy3) {
+TEST(transposefused, denseout1) {
   int N = 4;
   Tensor<double> A("A", {N}, Format{Dense});
   Tensor<double> B("B", {N, N}, Format{Dense, Sparse});
@@ -109,12 +109,60 @@ TEST(transposefused, dummy3) {
   // IndexStmt stmt = forall(i, forall(j, forall(i, A(i, j) = B(i, j) * C(j, i))));
 
   A.setAssembleWhileCompute(true);
+
+  std::cout << "===============================================" << std::endl;
+  std::cout << "\n\n\n\n\n\n\n\n\n" << std::endl;
+  std::cout << "================================================" << std::endl;
+
   A.setNewPath(true);
   std::cout << "here: " <<  stmt << std::endl;
 
   A.compile(stmt, true);
+
+  std::cout << "===============================================" << std::endl;
+  std::cout << "\n\n\n\n\n\n\n\n\n" << std::endl;
+  std::cout << "================================================" << std::endl;
+
   // A.assemble();
-  A.compute();
+  // A.compute();
+}
+
+TEST(transposefused, denseout2) {
+  int N = 4;
+  Tensor<double> A("A", {N}, Format{Dense});
+  Tensor<double> B("B", {N, N}, Format{Dense, Sparse});
+  Tensor<double> C("C", {N, N}, Format{Dense, Sparse});
+
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < N; j++) {
+      B.insert({i, j}, (double) i);
+      C.insert({i, j}, (double) j);
+    }
+  }
+
+  IndexVar i("i"), j("j");
+
+  A(i) = B(i, j) * C(i,j);
+
+  IndexStmt stmt = A.getAssignment().concretize(false);
+  // IndexStmt stmt = forall(i, forall(j, forall(i, A(i, j) = B(i, j) * C(j, i))));
+
+  std::cout << "===============================================" << std::endl;
+  std::cout << "\n\n\n\n\n\n\n\n\n" << std::endl;
+  std::cout << "================================================" << std::endl;
+
+  A.setAssembleWhileCompute(true);
+  // A.setNewPath(true);
+  std::cout << "here: " <<  stmt << std::endl;
+
+  A.compile(stmt, true);
+
+  std::cout << "===============================================" << std::endl;
+  std::cout << "\n\n\n\n\n\n\n\n\n" << std::endl;
+  std::cout << "================================================" << std::endl;
+
+  // A.assemble();
+  // A.compute();
 }
 
 
@@ -140,7 +188,8 @@ TEST(transposefused, sspmm) {
 
   std::cout << "here: " <<  stmt << std::endl;
 
-  // A.compile(stmt, true);
+  // A.setNewPath(true);
+  // A.compile(stmt, false);
   // A.assemble();
   // A.compute();
 }
@@ -174,8 +223,8 @@ TEST(transposefused, 3dfuse) {
   std::cout << "here: " <<  stmt << std::endl;
 
   A.compile(stmt, true);
-  // A.assemble();
-  // A.compute();
+  A.assemble();
+  A.compute();
 }
 
 TEST(transposefused, 3dfuse2) {

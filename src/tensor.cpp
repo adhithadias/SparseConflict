@@ -847,7 +847,7 @@ void TensorBase::compute() {
   if (!needsCompute()) {
     return;
   }
-  setNeedsCompute(false);
+  // setNeedsCompute(false);
   // Sync operand tensors if needed.
   auto operands = getTensors(getAssignment().getRhs());
   for (auto& operand : operands) {

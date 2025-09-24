@@ -190,10 +190,17 @@ private:
   {
     // debugPrint("MergeLatticeBuilder::visit(const AccessNode* access)");
     Access accessCopy = Access(access);
-    executeIfDebug([&]() {std::cout << "Access: " << accessCopy << std::endl;});
+    executeIfDebug([&]() {
+      std::cout << "Access: " << accessCopy << std::endl;
+      std::cout << "accesses: ";
+      for (auto& a : accesses) {
+        std::cout << a << " ";
+      }
+      std::cout << std::endl;
+    });
     // debugPrint("Access: ", accessCopy, ", isForsome: ", loopType);
     // std::cout << "Access: " << accessCopy << ", isForsome: " << loopType << std::endl;
-    if (loopType != 0) {
+    if (loopType == 2) { // same type node ignore if not access
       // check if AccessNode is in accesses
       bool found = false;
       executeIfDebug([&](){std::cout << "Accesses: ";});
@@ -205,10 +212,26 @@ private:
         }
       }
       if (!found) {
+        executeIfDebug([&](){std::cout << "Access not found in accesses" << std::endl;});
         // return empty lattice
         lattice = modeIterationLattice();
         return;
       }
+    } else if (loopType == 1) { // forsome node type ignore nonAccesses
+      bool found = false;
+      for (auto& a : accesses) { // accesses is nonAccesses
+        if (a == accessCopy) {
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        executeIfDebug([&](){std::cout << "nonAccess found in accesses" << std::endl;});
+        // return empty lattice
+        lattice = modeIterationLattice();
+        return;
+      }
+
     }
     executeIfDebug([&](){std::cout << "mergeLatticeBuilder::visit(const AccessNode* access) - after check" << std::endl;});
 
@@ -1042,6 +1065,13 @@ MergeLattice::MergeLattice(vector<MergePoint> points, set<set<Iterator>> regions
 MergeLattice MergeLattice::make(Forall forall, Iterators iterators, ProvenanceGraph provGraph, std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult)
 {
   executeIfDebug([&](){std::cout << "MergeLattice::make forall: " << forall << std::endl;});
+  executeIfDebug([&]() {
+    // print whereTempsToResult
+    std::cout << "MergeLattice::make forall whereTempsToResult: " << std::endl;
+    for (const auto& pair : whereTempsToResult) {
+      std::cout << "TensorVar: " << pair.first << ", AccessNode: " << pair.second << std::endl;
+    };
+  });
   // Can emit merge lattice once underived ancestor can be recovered
   IndexVar indexVar = forall.getIndexVar();
 
@@ -1071,9 +1101,20 @@ MergeLattice MergeLattice::make(Forall forall, Iterators iterators, ProvenanceGr
 MergeLattice MergeLattice::make(Forsome forsome, Iterators iterators, ProvenanceGraph provGraph, std::set<IndexVar> definedIndexVars, std::map<TensorVar, const AccessNode *> whereTempsToResult)
 {
   IndexVar indexVar = forsome.getIndexVar();
-  executeIfDebug([&](){std::cout << "MergeLattice::make forsome: " << forsome << std::endl;});
+  executeIfDebug([&](){
+    std::cout << "MergeLattice::make forsome: " << forsome 
+    << " iterators: " << iterators
+    << std::endl;});
 
-  MergeLatticeBuilder builder(indexVar, iterators, provGraph, definedIndexVars, whereTempsToResult, 1, forsome.getAccesses());
+  executeIfDebug([&]() {
+    // print whereTempsToResult
+    std::cout << "MergeLattice::make forsome whereTempsToResult: " << std::endl;
+    for (const auto& pair : whereTempsToResult) {
+      std::cout << "TensorVar: " << pair.first << ", AccessNode: " << pair.second << std::endl;
+    };
+  });
+
+  MergeLatticeBuilder builder(indexVar, iterators, provGraph, definedIndexVars, whereTempsToResult, 1, forsome.getNonAccesses());
 
   MergeLattice lattice = builder.build(forsome.getStmt());
   return lattice.getLoopLattice();

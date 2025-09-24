@@ -920,11 +920,13 @@ public:
   Forsome() = default;
   Forsome(const ForsomeNode*);
   Forsome(IndexVar indexVar, IndexStmt stmt);
-  Forsome(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses);
+  Forsome(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses,
+          std::vector<Access> nonAccesses);
 
   IndexVar getIndexVar() const;
   IndexStmt getStmt() const;
   std::vector<Access> getAccesses() const;
+  std::vector<Access> getNonAccesses() const;
 
   typedef ForsomeNode Node;
 };
@@ -932,7 +934,8 @@ public:
 /// Create a some index statement.
 Forsome forsome(IndexVar i, IndexStmt stmt);
 
-Forsome forsome(IndexVar i, IndexStmt stmt, std::vector<Access> accesses);
+Forsome forsome(IndexVar i, IndexStmt stmt, std::vector<Access> accesses,
+  std::vector<Access> nonAccesses);
 
 /// A forsame statement partially binds an index variable to values that were 
 /// previously bound in a forsome statement and evaluates the sub-statement for

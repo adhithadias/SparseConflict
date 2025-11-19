@@ -3462,10 +3462,6 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
               while (ptr < scs.size() && scs[ptr] != idx) {
                 ptr++;
               }
-              // assert (ptr < scs.size());
-              // if (duplicateIndices.count(scs[ptr])) {
-              //   accessMap[ptr].push_back(acc);
-              // }
               accessMap[ptr].push_back(acc);
             }
           } else {
@@ -3483,17 +3479,6 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
       latticeMap.visit(rhs);
       latticeMap.visit(lhs);
 
-      executeIfDebug([&]() {
-        // print latticeMap.accessMap;
-        for (size_t i = 0; i < latticeMap.accessMap.size(); i++) {
-          std::cout << "accessMap[" << scs[i] << "]: ";
-          for (auto &acc : latticeMap.accessMap[i]) {
-            std::cout << acc << " ";
-          }
-          std::cout << std::endl;
-        }
-      });
-
       set<IndexVar> duplicateIndices;
       set<IndexVar> seenIndices;
       map<IndexVar, int> indexVarCount;
@@ -3504,15 +3489,6 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
         }
         seenIndices.insert(idx);
       }
-
-      executeIfDebug([&]() {
-        // print indexVarCount
-        std::cout << "indexVarCount: ";
-        for (auto &idx : indexVarCount) {
-          std::cout << idx.first << ": " << idx.second << " ";
-        }
-        std::cout << std::endl;
-      });
 
       // for (auto &idx : util::reverse(scs)) {
       for (int i = scs.size() - 1; i >= 0; i--) {

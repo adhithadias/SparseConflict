@@ -113,6 +113,14 @@ vector<Type> mergeSequences(const vector<Type>& seq1,
 }
 
 // Function to compute the shortest common supersequence for multiple sequences
+/*
+* Given a list of sequences, find the shortest common supersequence
+* that contains each sequence as a subsequence.
+* If fixedSeq is provided, it will be added at the beginning of the result.
+* E.g., for sequences = {{"i", "j"}, {"j", "i"}} and fixedSeq = {},
+* the result can be {"i", "j", "i"} or {"j", "i", "j"}.
+* If fixedSeq = {"i"}, the result will be {"i", "j", "i"}.
+*/
 template <typename Type>
 vector<Type> findSCS(const vector<vector<Type>>& sequences,
     const vector<Type>& fixedSeq = {}) {

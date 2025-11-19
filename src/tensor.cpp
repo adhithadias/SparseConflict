@@ -856,11 +856,11 @@ void TensorBase::compute() {
   }
 
   auto arguments = packArguments(*this);
-  executeIfDebug([&]() {std::cout << "Calling comupute with " << arguments.size() << " arguments" << std::endl;});
+  // executeIfDebug([&]() {std::cout << "Calling comupute with " << arguments.size() << " arguments" << std::endl;});
   this->content->module->callFuncPacked("compute", arguments.data());
 
   if (content->assembleWhileCompute) {
-    setNeedsAssemble(false);
+    // setNeedsAssemble(false);
     taco_tensor_t* tensorData = ((taco_tensor_t*)arguments[0]);
     content->valuesSize = unpackTensorData(*tensorData, *this);
   }

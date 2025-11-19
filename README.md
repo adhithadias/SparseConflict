@@ -35,6 +35,7 @@ Build taco using CMake 3.4.0 or greater:
     mkdir build
     cd build
     cmake -DCMAKE_BUILD_TYPE=Release ..
+    cmake -DCMAKE_BUILD_TYPE=Debug ..
     make -j8
 
 Building taco requires `gcc` 5.0 or newer, or `clang` 3.9 or newer.  You can

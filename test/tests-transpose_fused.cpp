@@ -171,17 +171,19 @@ TEST(transposefused, sspmm) {
   Tensor<double> A("A", {N, N}, Format{Dense, Sparse});
   Tensor<double> B("B", {N, N}, Format{Dense, Sparse});
   Tensor<double> C("C", {N, N}, Format{Dense, Sparse});
+  Tensor<double> D("D", {N, N}, Format{Dense, Sparse});
 
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < N; j++) {
       B.insert({i, j}, (double) i);
       C.insert({i, j}, (double) j);
+      D.insert({i, j}, (double) (i + j));
     }
   }
 
   IndexVar i("i"), j("j"), k("k");
 
-  A(i, j) = B(i, k) * C(k, j);
+  A(i, j) = B(i, k) * C(k, j) * D(k, j);
 
   IndexStmt stmt = A.getAssignment().concretize(true);
   // IndexStmt stmt = forall(i, forall(j, forall(i, A(i, j) = B(i, j) * C(j, i))));
@@ -189,7 +191,7 @@ TEST(transposefused, sspmm) {
   std::cout << "here: " <<  stmt << std::endl;
 
   A.setNewPath(true);
-  A.compile(stmt, false);
+  A.compile(stmt, false); // assembleWhileCompute = true
   A.assemble();
   A.compute();
 }

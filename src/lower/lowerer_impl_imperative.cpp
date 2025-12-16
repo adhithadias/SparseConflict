@@ -282,7 +282,9 @@ Stmt LowererImplImperative::initForSameTemps(IndexStmt stmt, std::vector<Expr>& 
     }
     void visit(const ForsameNode* node) {
       Forsame forsame = Forsame(node);
-      std::cout << "Visiting Forsame Node for index var: " << forsame.getIndexVar() << std::endl;
+      executeIfDebug([&]{
+        std::cout << "Visiting Forsame Node for index var: " << forsame.getIndexVar() << std::endl;
+      });
       forsameAccesses.push_back(
         make_tuple(forsame.getIndexVar(), forsame.getAccesses()[0], indicesBetween[forsame.getIndexVar()]));
       IndexNotationVisitor::visit(node->stmt);
@@ -311,21 +313,27 @@ Stmt LowererImplImperative::initForSameTemps(IndexStmt stmt, std::vector<Expr>& 
 
   vector<Stmt> inits;
   // print indexCollector.forsameAccesses
-  std::cout << "Collected Forsame Accesses: " << std::endl;
+  executeIfDebug([&]{
+    std::cout << "Collected Forsame Accesses: " << std::endl;
+  });
   for (const auto& entry : indexCollector.forsameAccesses) {
     IndexVar indexVar = std::get<0>(entry);
     Access access = std::get<1>(entry);
     vector<IndexVar> betweenIndices = std::get<2>(entry);
     TensorVar tensor = access.getTensorVar();
     // need to remove the indices that are not in access.getIndexVars()
-    std::cout << "Forsame IndexVar: " << indexVar << ", Access: " << access << ", Between Indices: ";
+    executeIfDebug([&]{
+      std::cout << "Forsame IndexVar: " << indexVar << ", Access: " << access << ", Between Indices: ";
+    });
     Expr allocSize = ir::Literal::make(1);
     std::string tempName = "idxptr_" + tensor.getName() + "_";
     auto accessIndexVars = access.getIndexVars();
     Expr copyDim;
     int count = 0;
     for (const auto& idx : betweenIndices) {
-      std::cout << idx << " ";
+      executeIfDebug([&]{
+        std::cout << idx << " ";
+      });
       // idx is in access.getIndexVars()
       // get the corresponding dimension in access
       // and allocate a temporary variable
@@ -368,7 +376,9 @@ Stmt LowererImplImperative::initForSameTemps(IndexStmt stmt, std::vector<Expr>& 
       make_tuple(indexVar, access, pointerArrayVar, copyDim)
     );
   }
-  std::cout << "inits: " << Block::make(inits) << std::endl;
+  executeIfDebug([&]{
+    std::cout << "inits: " << Block::make(inits) << std::endl;
+  });
 
   struct InitForSameTemps : public IndexNotationVisitor {
 
@@ -477,11 +487,9 @@ LowererImplImperative::lower(IndexStmt stmt, string name,
   // Create iterators
   executeIfDebug([&]{std::cout << "::lower, Creating iterators..." << std::endl;});
   iterators = Iterators(stmt, tensorVars);
-  executeIfDebug([&]{
-    // std::cout << "::lower, Created iterators" << std::endl;
-  });
 
   executeIfDebug([&]{
+    std::cout << "::lower, Created iterators" << std::endl;
     std::cout << "Iterators: " << std::endl;
     for (const auto& it : iterators.levelIterators()) {
       std::cout << it.first << ": " << it.second << std::endl;
@@ -1902,10 +1910,12 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
   string foundName;
   Expr found;
   for (auto access : accesses) {
-    std::cout << "-------access" << access.getTensorVar().getName() << std::endl;
     foundName = "index_found_" + indexVar.getName() + "_" + access.getTensorVar().getName();
     found = forsameVarDecl.back();
-    std::cout << "-------foundName" << foundName << std::endl;
+    executeIfDebug([&]{
+      std::cout << "-------access" << access.getTensorVar().getName() << std::endl;
+      std::cout << "-------foundName" << foundName << std::endl;
+    });
   }
 
   // idxFoundName is not a new variable declaration. Just save searchcall result to existing variable.
@@ -1920,7 +1930,9 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
 
   Stmt body = lower(forsame.getStmt());
 
-  std::cout << " followMode: " << (int)taco::followMode << std::endl;
+  executeIfDebug([&]{
+    std::cout << " followMode: " << (int)taco::followMode << std::endl;
+  });
   
   if (taco::followMode == taco::FollowMode::BinarySearch) {
     executeIfDebug([&]{std::cout << "::lowerForsamePosition, body: " << body << std::endl;});
@@ -1959,18 +1971,20 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
       if (forsomeIndexVar == forsame.getIndexVar()) {
         // while (pointerArrayVar[j] < endBound && iterator.getMode().getModePack().getArray(1)[pointerArrayVar[j]] < coordinate) {pointerArrayVar[ipos]++;}
         Expr cond1 = ir::Lt::make(iterPosVar, endBound);
-        std::cout << "cond1: " << cond1 << std::endl;
         Expr cond2 = ir::Lt::make(ir::Load::make(iterator.getMode().getModePack().getArray(1), iterPosVar), coordinate);
-        std::cout << "cond2: " << cond2 << std::endl;
         Expr whileCond = ir::And::make(cond1, cond2);
-        std::cout << "whileCond: " << whileCond << std::endl;
         // create statement to increment iterPosVar by 1
         Stmt incrementIterPosVar = ir::Assign::make(iterPosVar, ir::Add::make(iterPosVar, ir::Literal::make(1, iterPosVar.type())));
         Stmt storePointer = ir::Store::make(pointerArrayVar, parentActual, ir::Sub::make(iterPosVar, startBound));
-        std::cout << "whileBody: " << storePointer << std::endl;
+        
         Stmt whileStmt = ir::While::make(whileCond, incrementIterPosVar);
-        executeIfDebug([&]{std::cout << "::lowerForsamePosition, whileStmt: " << whileStmt << std::endl;});
-        // searchcall = whileStmt;
+        executeIfDebug([&]{
+          std::cout << "cond1: " << cond1 << std::endl;
+          std::cout << "cond2: " << cond2 << std::endl;
+          std::cout << "whileCond: " << whileCond << std::endl;
+          std::cout << "whileBody: " << storePointer << std::endl;
+          std::cout << "::lowerForsamePosition, whileStmt: " << whileStmt << std::endl;
+        });
 
         Expr cond3 = ir::Eq::make(ir::Load::make(iterator.getMode().getModePack().getArray(1), iterPosVar), coordinate);
         Expr combinedCond = ir::And::make(cond1, cond3);

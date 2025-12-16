@@ -3,6 +3,8 @@
 #include "taco/tensor.h"
 #include "taco/index_notation/index_notation.h"
 #include "taco/index_notation/index_notation_nodes.h"
+#include "codegen/codegen.h"
+#include "taco/lower/lower.h"
 // #include "taco/util/algo.h"
 
 #include <iostream>
@@ -54,6 +56,9 @@ TEST(transposefused, dummy) {
 
 TEST(transposefused, dummy2) {
     int N = 16;
+
+    taco::followMode = taco::FollowMode::PointerTrack;
+
     Tensor<double> A("A", {N, N}, Format{Dense, Sparse});
     Tensor<double> B("B", {N, N}, Format{Dense, Sparse});
     Tensor<double> C("C", {N, N}, Format{Dense, Sparse});
@@ -80,8 +85,20 @@ TEST(transposefused, dummy2) {
     A.setAssembleWhileCompute(true);
     A.setNewPath(true);
     std::cout << "compiling statement: " << stmt << std::endl;
+
+    ir::IRPrinter irp = ir::IRPrinter(cout);
+      
+    cout << stmt << endl;
+
+    std::shared_ptr<ir::CodeGen> codegen = ir::CodeGen::init_default(cout, ir::CodeGen::ImplementationGen);
+    ir::Stmt compute = lower(stmt, "compute",  true, true);
+    
+    irp.print(compute);
+    cout << endl;
+//     codegen->compile(compute, false);
+
     A.compile(stmt, true);
-    // A.assemble();
+//     // A.assemble();
     A.compute();
 
     std::cout << "done" << std::endl;
@@ -116,6 +133,13 @@ TEST(transposefused, denseout1) {
 
   A.setNewPath(true);
   std::cout << "here: " <<  stmt << std::endl;
+
+  ir::IRPrinter irp = ir::IRPrinter(cout);
+  std::shared_ptr<ir::CodeGen> codegen = ir::CodeGen::init_default(cout, ir::CodeGen::ImplementationGen);
+  ir::Stmt compute = lower(stmt, "compute",  true, true);
+  
+  irp.print(compute);
+  cout << endl;
 
   A.compile(stmt, true);
 
@@ -198,6 +222,10 @@ TEST(transposefused, sspmm) {
 
 TEST(transposefused, 3dfuse) {
   int N = 6;
+
+  taco::followMode = taco::FollowMode::Pointer;
+
+
   Tensor<double> A("A", {N, N, N}, Format{Dense, Sparse, Sparse});
   Tensor<double> B("B", {N, N, N}, Format{Dense, Sparse, Sparse});
   Tensor<double> C("C", {N, N, N}, Format{Dense, Sparse, Sparse});
@@ -223,6 +251,13 @@ TEST(transposefused, 3dfuse) {
   // IndexStmt stmt = forall(i, forall(j, forall(i, A(i, j) = B(i, j) * C(j, i))));
 
   std::cout << "here: " <<  stmt << std::endl;
+
+  ir::IRPrinter irp = ir::IRPrinter(cout);
+  std::shared_ptr<ir::CodeGen> codegen = ir::CodeGen::init_default(cout, ir::CodeGen::ImplementationGen);
+  ir::Stmt compute = lower(stmt, "compute",  true, true);
+  
+  irp.print(compute);
+  cout << endl;
 
   A.compile(stmt, true);
   A.assemble();

@@ -10,6 +10,7 @@
 #include "taco/index_notation/provenance_graph.h"
 #include "taco/ir/ir.h"
 #include "taco/ir/ir_generators.h"
+#include "taco/ir/ir_rewriter.h"
 #include "taco/ir/ir_visitor.h"
 #include "taco/ir/simplify.h"
 #include "taco/lower/iterator.h"
@@ -232,6 +233,179 @@ static std::set<Expr> hasSparseInserts(IndexStmt stmt, Iterators iterators,
   return ret;
 }
 
+Stmt LowererImplImperative::initForSameTemps(IndexStmt stmt, std::vector<Expr>& forsameVarDecl, const std::map<TensorVar, Expr>& tensorVars, const Iterators& iterators) {
+
+  // Write a visitor to collect the indices between Forsome and Forsame nodes
+  struct GetIndicesBetween : public IndexNotationVisitor {
+    map<IndexVar, vector<IndexVar>> indicesBetween;
+    // assumes only one forsame per indexvar
+    // this can be extended to handle multiple forsame nodes per indexvar if needed
+    map<IndexVar, int> forsomeRecordedDepth; 
+    map<IndexVar, TensorVar> forsameRecordedTensorVar;
+    vector<tuple<IndexVar, Access, vector<IndexVar>>> forsameAccesses;
+    int depth = 0;
+    vector<IndexVar> currentIndices;
+    using IndexNotationVisitor::visit;
+    void visit(const ForallNode* node) {
+      Forall forall = Forall(node);
+      if (forsomeRecordedDepth.size() > 0 && 
+                 forsomeRecordedDepth[forall.getIndexVar()] != depth) {
+        for (auto &pair : indicesBetween) {
+          // if (forsomeRecordedDepth.find(pair.first) != forsomeRecordedDepth.end()){
+            pair.second.push_back(forall.getIndexVar());
+          // }
+        }
+      }
+      currentIndices.push_back(node->indexVar);
+      depth++;
+      IndexNotationVisitor::visit(node->stmt);
+      depth--;
+    }
+    void visit(const ForsomeNode* node) {
+      Forsome forsome = Forsome(node);
+
+      if (forsomeRecordedDepth.find(forsome.getIndexVar()) == forsomeRecordedDepth.end()) {
+        forsomeRecordedDepth[forsome.getIndexVar()] = depth;
+        indicesBetween[forsome.getIndexVar()] = {};
+      } else if (forsomeRecordedDepth.size() > 0 && 
+                 forsomeRecordedDepth[forsome.getIndexVar()] != depth) {
+        for (auto &pair : indicesBetween) {
+          // if (forsomeRecordedDepth.find(pair.first) != forsomeRecordedDepth.end()){
+            pair.second.push_back(forsome.getIndexVar());
+          // }
+        }
+      }
+      currentIndices.push_back(node->indexVar);
+      depth++;
+      IndexNotationVisitor::visit(node->stmt);
+      depth--;
+    }
+    void visit(const ForsameNode* node) {
+      Forsame forsame = Forsame(node);
+      std::cout << "Visiting Forsame Node for index var: " << forsame.getIndexVar() << std::endl;
+      forsameAccesses.push_back(
+        make_tuple(forsame.getIndexVar(), forsame.getAccesses()[0], indicesBetween[forsame.getIndexVar()]));
+      IndexNotationVisitor::visit(node->stmt);
+    }
+  };
+
+  GetIndicesBetween indexCollector;
+  indexCollector.visit(stmt);
+
+    auto getDimension = [&](const TensorVar& tv, const Access& a, int mode) {
+      // If the tensor mode is windowed, then the dimension for iteration is the bounds
+      // of the window. Otherwise, it is the actual dimension of the mode.
+      if (a.isModeWindowed(mode)) {
+        // The mode value used to access .levelIterator is 1-indexed, while
+        // the mode input to getDimension is 0-indexed. So, we shift it up by 1.
+        auto iter = iterators.levelIterator(ModeAccess(a, mode+1));
+        return ir::Div::make(ir::Sub::make(iter.getWindowUpperBound(), iter.getWindowLowerBound()), iter.getStride());
+      } else if (a.isModeIndexSet(mode)) {
+        // If the mode has an index set, then the dimension is the size of
+        // the index set.
+        return ir::Literal::make(a.getIndexSet(mode).size());
+      } else {
+        return GetProperty::make(tensorVars.at(tv), TensorProperty::Dimension, mode);
+      }
+    };
+
+  vector<Stmt> inits;
+  // print indexCollector.forsameAccesses
+  std::cout << "Collected Forsame Accesses: " << std::endl;
+  for (const auto& entry : indexCollector.forsameAccesses) {
+    IndexVar indexVar = std::get<0>(entry);
+    Access access = std::get<1>(entry);
+    vector<IndexVar> betweenIndices = std::get<2>(entry);
+    TensorVar tensor = access.getTensorVar();
+    // need to remove the indices that are not in access.getIndexVars()
+    std::cout << "Forsame IndexVar: " << indexVar << ", Access: " << access << ", Between Indices: ";
+    Expr allocSize = ir::Literal::make(1);
+    std::string tempName = "idxptr_" + tensor.getName() + "_";
+    auto accessIndexVars = access.getIndexVars();
+    Expr copyDim;
+    int count = 0;
+    for (const auto& idx : betweenIndices) {
+      std::cout << idx << " ";
+      // idx is in access.getIndexVars()
+      // get the corresponding dimension in access
+      // and allocate a temporary variable
+      // convert if condition to assert
+      assert(std::find(accessIndexVars.begin(), accessIndexVars.end(), idx) != accessIndexVars.end());
+        
+      if (count == 0){
+        tempName  += idx.getName();
+      } else {
+        tempName  += "X" + idx.getName();
+      }
+      
+      Datatype tempType = tensor.getType().getDataType();
+      // calculate allocSize using idx dimension size and tempType
+      auto shape = tensor.getType().getShape();
+
+      auto dim = getDimension(tensor, access, 
+                          std::distance(accessIndexVars.begin(), 
+                          std::find(accessIndexVars.begin(), accessIndexVars.end(), idx)));
+      copyDim = dim;
+
+      allocSize = ir::Mul::make(dim, allocSize);
+      count++;
+      
+    }
+    tempName += "_" + indexVar.getName();
+    Expr pointerArrayVar = ir::Var::make(tempName,
+                                      Int(),
+                                      true, false);
+    Stmt declResult = VarDecl::make(pointerArrayVar, 0);
+    inits.push_back(declResult);
+
+    Stmt allocResult = Allocate::make(pointerArrayVar, allocSize);
+    inits.push_back(allocResult);
+
+    auto dim = getDimension(tensor, access, 
+                          std::distance(accessIndexVars.begin(), 
+                          std::find(accessIndexVars.begin(), accessIndexVars.end(), indexVar)));
+    forsomeIdxPointerMemCpyInit.push_back(
+      make_tuple(indexVar, access, pointerArrayVar, copyDim)
+    );
+  }
+  std::cout << "inits: " << Block::make(inits) << std::endl;
+
+  struct InitForSameTemps : public IndexNotationVisitor {
+
+    std::vector<Expr>& forsameVarDecl;
+    InitForSameTemps(std::vector<Expr>& vars) : forsameVarDecl(vars) {}
+
+    vector<Stmt> inits; // forsame index and its respective tensor should be identified
+    using IndexNotationVisitor::visit;
+    void visit(const ForsameNode* node) {
+      Forsame forSameNode = Forsame(node);
+      // initialize the temporary variable for forsame
+      // get index var
+      IndexVar indexVar = forSameNode.getIndexVar();
+      // get the temporary tensor for forsame
+      std::vector<Access> accesses = forSameNode.getAccesses();
+      // create initialization statement as follows:
+      // "int index_found_indexVar_tensorVar = -1;"
+      for (const auto& access : accesses) {
+        TensorVar tensorVar = access.getTensorVar();
+        string tempName = "index_found_" + indexVar.getName() + "_" + tensorVar.getName();
+        Expr tempVar = Var::make(tempName, Int());
+        forsameVarDecl.push_back(tempVar);
+        Stmt init = VarDecl::make(tempVar, ir::Literal::make((int32_t)-1));
+        inits.push_back(init);
+      }
+      // continue visiting inner statements
+      IndexNotationVisitor::visit(forSameNode.getStmt());
+    }
+  };
+  InitForSameTemps visitor(forsameVarDecl);
+  visitor.visit(stmt);
+  if (followMode == FollowMode::Pointer) {
+    return Block::make(Block::make(inits));
+  }
+  return Block::make(Block::make(visitor.inits));
+}
+
 Stmt
 LowererImplImperative::lower(IndexStmt stmt, string name,
                    bool assemble, bool compute, bool pack, bool unpack)
@@ -411,6 +585,7 @@ LowererImplImperative::lower(IndexStmt stmt, string name,
   }
 
   // Allocate memory for scalar results
+  //-----------------------------------------
   if (generateAssembleCode()) {
     for (auto& result : results) {
       if (result.getOrder() == 0) {
@@ -426,6 +601,9 @@ LowererImplImperative::lower(IndexStmt stmt, string name,
 
   // Allocate and initialize append and insert mode indices
   Stmt initializeResults = initResultArrays(resultAccesses, reducedAccesses);
+
+  // Stmt initializeForSameTemps = initForSameTemps(stmt, forsameVarDecl);
+  Stmt initializeForSameTemps = initForSameTemps(stmt, forsameVarDecl, tensorVars, iterators);
 
   // Lower the index statement to compute and/or assemble
   executeIfDebug([&]{std::cout << "Lowering body..." << std::endl;});
@@ -457,6 +635,7 @@ LowererImplImperative::lower(IndexStmt stmt, string name,
   return Function::make(name, resultsIR, argumentsIR,
                         Block::blanks(Block::make(header),
                                       initializeResults,
+                                      initializeForSameTemps,
                                       body,
                                       finalizeResults,
                                       Block::make(footer)));
@@ -688,6 +867,48 @@ Stmt LowererImplImperative::lowerForsome(Forsome forsome)
   // loops index variable
   Stmt preInitValues = initResultArrays(forsome.getIndexVar(), resultAccesses,
                                       reducedAccesses);
+  Stmt memCpyStmts = Stmt();
+
+  // Use forsomeIdxPointerMemCpyInit to initialize index pointer arrays
+  // by copying from the C2_pos arrays of the corresponding tensors
+  for (auto& initTuple : forsomeIdxPointerMemCpyInit) {
+    IndexVar forsomeIndexVar = std::get<0>(initTuple);
+    Access access = std::get<1>(initTuple);
+    Expr pointerArrayVar = std::get<2>(initTuple);
+    Expr dim = std::get<3>(initTuple);
+    auto indexVars = access.getIndexVars();
+    int indexVarPos = std::find(indexVars.begin(), indexVars.end(), forsomeIndexVar) - indexVars.begin();
+
+    auto modeAccess = ModeAccess(access, indexVarPos + 1);
+    std::string arraysName = util::toString(access.getTensorVar().getName()) + std::to_string(indexVarPos + 1) + "_pos";
+
+    // create new Iterator to access the level iterator
+    Iterator levelIter = iterators.levelIterator(modeAccess);
+    Expr sourceArray = levelIter.getMode().getModePack().getArray(0);
+
+  // memcpy expects a size in bytes. Multiply the number of elements by
+  // sizeof(int32_t) to get the byte count.
+  Stmt memCpy = Memcpy::make(pointerArrayVar, sourceArray,
+                 ir::Mul::make(ir::Sizeof::make(taco::Int32), dim));
+    // Expr sizeOfInt = Sizeof::make(taco::Int32);
+    // Expr memCpy = ir::Call::make("memcpy", {pointerArrayVar, sourceArray}, Int());
+  // Cast the pointer to (int32_t*) in the generated C output by using a
+  // Call node whose func string is the cast. The IR Cast::make does not
+  // support pointer types, so this prints the desired textual cast.
+  // Expr castPtr = ir::Call::make("(int32_t*)", {pointerArrayVar}, Int());
+  // memset takes a byte count as its third argument. Use sizeof(int32_t) * dim
+  // to zero out the full array (dim elements of 32-bit ints).
+  Stmt memSet = ir::Memset::make(pointerArrayVar, ir::Literal::make(0),
+    ir::Mul::make(ir::Sizeof::make(taco::Int32), dim));
+    
+  // Expr memSet = ir::Call::make("memset", {pointerArrayVar, ir::Literal::make(0),
+  //   ir::Mul::make(ir::Sizeof::make(taco::Int32), dim)}, Int());
+  // Expr memSetCast = ir::Call::make("(int32_t*)", {memSet}, Int());
+  // auto assignMemSet = ir::Assign::make(pointerArrayVar, memSetCast);
+    if (followMode == FollowMode::Pointer) {
+      memCpyStmts = Block::blanks(memCpyStmts, memSet);
+    }
+  }
 
   Stmt loops;
   if (caseLattice.iterators().size() == 1 && caseLattice.iterators()[0].isUnique()) {
@@ -727,7 +948,7 @@ Stmt LowererImplImperative::lowerForsome(Forsome forsome)
     }
   }
 
-  return Block::blanks(preInitValues,
+  return Block::blanks(preInitValues, memCpyStmts,
     loops);
 }
 
@@ -1078,6 +1299,8 @@ Stmt LowererImplImperative::lowerForall(Forall forall)
     parallelUnitIndexVars.erase(forall.getParallelUnit());
     parallelUnitSizes.erase(forall.getParallelUnit());
   }
+
+  executeIfDebug([&]{std::cout << "::lowerForall, preInitValues: " << preInitValues << std::endl;});
   return Block::blanks(preInitValues,
                        temporaryValuesInitFree[0],
                        loops,
@@ -1639,6 +1862,7 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
   Stmt boundsCompute;
   Expr startBound, endBound;
   Expr parentPos = iterator.getParent().getPosVar();
+  Expr parentActual = iterator.getParent().getCoordVar();
   if (!provGraph.isUnderived(iterator.getIndexVar())) {
     executeIfDebug([&]{std::cout << "::lowerForsamePosition, iterator is not underived" << std::endl;});
     vector<Expr> bounds = provGraph.deriveIterBounds(iterator.getIndexVar(), definedIndexVarsOrdered, underivedBounds, indexVarToExprMap, iterators);
@@ -1673,9 +1897,19 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
   Expr searchcall = taco::ir::Call::make("index_search", {iterator.getMode().getModePack().getArray(1), startBound, endBound, coordinate}, taco::Int32);
   executeIfDebug([&]{std::cout << "::lowerForsamePosition, startBoundCall: " << searchcall << std::endl;});
 
-  Expr found = ir::Var::make("index_found", taco::Int32, false, false, false);
+  auto accesses = forsame.getAccesses();
+  auto indexVar = forsame.getIndexVar();
+  string foundName;
+  Expr found;
+  for (auto access : accesses) {
+    std::cout << "-------access" << access.getTensorVar().getName() << std::endl;
+    foundName = "index_found_" + indexVar.getName() + "_" + access.getTensorVar().getName();
+    found = forsameVarDecl.back();
+    std::cout << "-------foundName" << foundName << std::endl;
+  }
 
-  Stmt foundDecl = ir::VarDecl::make(found, searchcall);
+  // idxFoundName is not a new variable declaration. Just save searchcall result to existing variable.
+  Stmt foundDecl = ir::Assign::make(found, searchcall);
   auto iterPosVar = iterator.getPosVar();
   Stmt declarePosVar = ir::VarDecl::make(iterPosVar, found);
   executeIfDebug([&]{
@@ -1685,16 +1919,78 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
   });
 
   Stmt body = lower(forsame.getStmt());
+
+  std::cout << " followMode: " << (int)taco::followMode << std::endl;
   
-  executeIfDebug([&]{std::cout << "::lowerForsamePosition, body: " << body << std::endl;});
-  Stmt foundGuard = ir::IfThenElse::make(
-    ir::Neq::make(found, ir::Literal::make(-1)),
-    ir::Block::make(ir::Comment::make("Search node"), body)
-  );
+  if (taco::followMode == taco::FollowMode::BinarySearch) {
+    executeIfDebug([&]{std::cout << "::lowerForsamePosition, body: " << body << std::endl;});
+    Stmt foundGuard = ir::IfThenElse::make(
+      ir::Neq::make(found, ir::Literal::make(-1)),
+      ir::Block::make(
+        ir::Comment::make("Search node"), 
+        ir::Comment::make("Comment Before"),
+        body,
+        ir::Comment::make("Comment After")
+      )
+    );
 
-  executeIfDebug([&]{std::cout << "::lowerForsamePosition, foundGuard: " << foundGuard << std::endl;});
+    executeIfDebug([&]{std::cout << "::lowerForsamePosition, foundGuard: " << foundGuard << std::endl;});
 
-  return ir::Block::make(foundDecl, declarePosVar, foundGuard);
+    return ir::Block::make(foundDecl, declarePosVar, foundGuard);
+  } else {
+    // 
+    // Need to create an expr 
+    // while (iptr[j] < C2_pos[j+1] && C2_crd[iptr[j]] < i) {
+    //         iptr[j]++;
+    //       }
+
+    Expr ipos = parentPos;
+    for (auto& initTuple : forsomeIdxPointerMemCpyInit) {
+      IndexVar forsomeIndexVar = std::get<0>(initTuple);
+      Access access = std::get<1>(initTuple);
+      Expr pointerArrayVar = std::get<2>(initTuple);
+      Expr dim = std::get<3>(initTuple);
+
+
+
+      // found decl
+      Stmt declarePosVar = ir::VarDecl::make(iterPosVar, ir::Add::make(ir::Load::make(pointerArrayVar, parentActual), startBound));
+
+      if (forsomeIndexVar == forsame.getIndexVar()) {
+        // while (pointerArrayVar[j] < endBound && iterator.getMode().getModePack().getArray(1)[pointerArrayVar[j]] < coordinate) {pointerArrayVar[ipos]++;}
+        Expr cond1 = ir::Lt::make(iterPosVar, endBound);
+        std::cout << "cond1: " << cond1 << std::endl;
+        Expr cond2 = ir::Lt::make(ir::Load::make(iterator.getMode().getModePack().getArray(1), iterPosVar), coordinate);
+        std::cout << "cond2: " << cond2 << std::endl;
+        Expr whileCond = ir::And::make(cond1, cond2);
+        std::cout << "whileCond: " << whileCond << std::endl;
+        // create statement to increment iterPosVar by 1
+        Stmt incrementIterPosVar = ir::Assign::make(iterPosVar, ir::Add::make(iterPosVar, ir::Literal::make(1, iterPosVar.type())));
+        Stmt storePointer = ir::Store::make(pointerArrayVar, parentActual, ir::Sub::make(iterPosVar, startBound));
+        std::cout << "whileBody: " << storePointer << std::endl;
+        Stmt whileStmt = ir::While::make(whileCond, incrementIterPosVar);
+        executeIfDebug([&]{std::cout << "::lowerForsamePosition, whileStmt: " << whileStmt << std::endl;});
+        // searchcall = whileStmt;
+
+        Expr cond3 = ir::Eq::make(ir::Load::make(iterator.getMode().getModePack().getArray(1), iterPosVar), coordinate);
+        Expr combinedCond = ir::And::make(cond1, cond3);
+        Stmt foundGuard = ir::IfThenElse::make(
+          combinedCond,
+          ir::Block::make(
+            ir::Comment::make("Search node"), 
+            ir::Comment::make("Comment Before"),
+            body,
+            ir::Comment::make("Comment After"),
+            incrementIterPosVar
+          )
+        );
+
+        return ir::Block::make(declarePosVar, whileStmt, foundGuard, storePointer);
+      }
+
+    }
+  }
+
 }
 
 Stmt LowererImplImperative::lowerForsomeDimension(Forsome forsome,
@@ -1975,11 +2271,21 @@ Stmt LowererImplImperative::lowerForallPosition(Forall forall, Iterator iterator
     executeIfDebug([&]{std::cout << "::lowerForallPosition startBound: " << startBound << ", endBound: " << endBound << std::endl;});
   }
 
+  executeIfDebug([&]{
+    std::cout << "::lowerForallPosition, boundsGuard: " << boundsGuard 
+    << "\nbody: " << body << std::endl;
+  });
+  
+
   Stmt loop = Block::make(strideGuard, declareCoordinate, boundsGuard, body);
   if (iterator.isBranchless() && iterator.isCompact() && 
       (iterator.getParent().isRoot() || iterator.getParent().isUnique())) {
+    executeIfDebug([&]{std::cout << "::lowerForallPosition, branchless and compact iterator" << std::endl;}); 
     loop = Block::make(VarDecl::make(iterator.getPosVar(), startBound), loop);
   } else {
+    executeIfDebug([&]{
+      std::cout << "::lowerForallPosition, not branchless or compact iterator" << std::endl;
+    });
     LoopKind kind = LoopKind::Serial;
     if (forall.getParallelUnit() == ParallelUnit::CPUVector && !ignoreVectorize) {
       kind = LoopKind::Vectorized;
@@ -2742,7 +3048,11 @@ Stmt LowererImplImperative::lowerForallBody(Expr coordinate, IndexStmt stmt,
 
   // Code to append coordinates
   Stmt appendCoords = appendCoordinate(appenders, coordinate);
-  executeIfDebug([&]{std::cout << "::lowerForallBody, appendCoords: {\n" << appendCoords << "}" << std::endl;});
+  executeIfDebug([&]{
+    std::cout << "::lowerForallBody, appendCoords: {\n" << appendCoords << "}" << std::endl
+    << "::lowerForallBody, initVals: {\n" << initVals << "}" << std::endl;
+  });
+
 
   std::vector<Stmt> stmts;
   
@@ -2756,6 +3066,44 @@ Stmt LowererImplImperative::lowerForallBody(Expr coordinate, IndexStmt stmt,
 
   Stmt incr = Block::make(stmts);
   executeIfDebug([&]{std::cout << "::lowerForallBody, incr: {\n" << incr << "}" << std::endl;});
+  
+  // If body contains a comment "Comment After", then replace that Comment
+  // statement with the appendCoords statement so the append is emitted at
+  // the position requested by the caller. After replacing, avoid appending
+  // appendCoords again at the end by clearing the variable.
+  // This is a **hack** to handle the Forsame node array search condition
+  // extend this to handle multiple forall indices and forsame indices
+  if (body.defined()) {
+    struct ReplaceCommentAfterAndBefore : public IRRewriter {
+      Stmt replacementAfter;
+      Stmt replacementBefore;
+      bool replaced = false;
+      ReplaceCommentAfterAndBefore(Stmt replAfter, Stmt replBefore) : replacementAfter(replAfter), replacementBefore(replBefore) {}
+      using IRRewriter::visit;
+      void visit(const ir::Comment* op) override {
+        if (op->text == "Comment After") {
+          // replace the comment node with the provided statement
+          stmt = replacementAfter;
+          replaced = true;
+        } else if (op->text == "Comment Before") {
+          stmt = replacementBefore;
+          replaced = true;
+        }
+        else {
+          stmt = op;
+        }
+      }
+    } replacer(appendCoords, initVals);
+
+    body = replacer.rewrite(body);
+    // We have inserted appendCoords into the body in-place, so don't append
+    // it again after the body.
+    if (replacer.replaced) {
+      appendCoords = Stmt();
+      initVals = Stmt();
+    }
+    
+  }
 
   // TODO: Emit code to insert coordinates
 

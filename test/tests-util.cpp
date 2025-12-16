@@ -210,3 +210,64 @@ TEST(util, lattice1) {
 
   
 }
+
+// New test: ensure multiple shortest common supersequences are discovered
+TEST(util, multipleSCS_permutations) {
+  // sequences {"i","j"} and {"j","i"} should yield two shortest SCS:
+  // {"i","j","i"} and {"j","i","j"}
+  vector<vector<string>> sequences = {
+    {"i", "j"},
+    {"j", "i"}
+  };
+
+  // getAllSCS takes a non-const vector by reference and considers permutations
+  auto allScs = getAllSCS(sequences, {});
+
+  // Expect exactly two shortest sequences
+  ASSERT_EQ((int)allScs.size(), 2);
+
+  vector<string> expected1 = {"i", "j", "i"};
+  vector<string> expected2 = {"j", "i", "j"};
+
+  ASSERT_NE(allScs.find(expected1), allScs.end());
+  ASSERT_NE(allScs.find(expected2), allScs.end());
+}
+
+TEST(util, scs_chars_no_prefix) {
+  vector<vector<char>> sequences = {{'A','B','C'}, {'B','X','A'}};
+
+  auto allScs = findAllSCSWithPrefix<char>(sequences, vector<char>{});
+
+  // Expect at least one shortest solution of length 5 and that it contains
+  // the expected sequence {'B','X','A','B','C'}.
+  bool foundExpected = false;
+  for (const auto &scs : allScs) {
+    if (scs.size() == 5 && scs == vector<char>{'B','X','A','B','C'}) {
+      foundExpected = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(foundExpected);
+}
+
+TEST(util, scs_chars_with_prefix_BX) {
+  vector<vector<char>> sequences = {{'A','B','C'}, {'B','X','A'}};
+  vector<char> prefix = {'B','X'};
+
+  auto allScs = findAllSCSWithPrefix<char>(sequences, prefix);
+
+  // With prefix {B,X} we expect at least the completion {B,X,A,B,C}
+  vector<char> expected = {'B','X','A','B','C'};
+  ASSERT_NE(allScs.find(expected), allScs.end());
+}
+
+TEST(util, scs_chars_with_prefix_A) {
+  vector<vector<char>> sequences = {{'A','B','C'}, {'B','X','A'}};
+  vector<char> prefix = {'A'};
+
+  auto allScs = findAllSCSWithPrefix<char>(sequences, prefix);
+
+  // The prefix {'A'} should allow the completion {A,B,X,A,C}; ensure it's present
+  vector<char> expected = {'A','B','X','A','C'};
+  ASSERT_NE(allScs.find(expected), allScs.end());
+}

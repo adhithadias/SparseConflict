@@ -368,6 +368,28 @@ void IRPrinter::visit(const Malloc* op) {
   stream << ")";
 }
 
+void IRPrinter::visit(const Memcpy* op) {
+  doIndent();
+  stream << "memcpy(";
+  op->dest.accept(this);
+  stream << ", ";
+  op->src.accept(this);
+  stream << ", ";
+  op->size.accept(this);
+  stream << ")";;
+}
+
+void IRPrinter::visit(const Memset* op) {
+  doIndent();
+  stream << "memset(";
+  op->dest.accept(this);
+  stream << ", ";
+  op->value.accept(this);
+  stream << ", ";
+  op->size.accept(this);
+  stream << ")";;
+}
+
 void IRPrinter::visit(const Sizeof* op) {
   stream << "sizeof(";
   stream << op->sizeofType;

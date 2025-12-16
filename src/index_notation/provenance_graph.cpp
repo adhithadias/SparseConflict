@@ -910,17 +910,33 @@ ProvenanceGraph::ProvenanceGraph(IndexStmt concreteStmt) {
   match(concreteStmt,
         std::function<void(const ForallNode*)>([&](const ForallNode* op) {
           nodes.insert(op->indexVar);
+        }),
+        std::function<void(const ForsomeNode*)>([&](const ForsomeNode* op) {
+          nodes.insert(op->indexVar);
+        }),
+        std::function<void(const ForsameNode*)>([&](const ForsameNode* op) {
+          nodes.insert(op->indexVar);
         })
   );
+  executeIfDebug([&](){
+    std::cout << "ProvenanceGraph: Found " << nodes.size() << " nodes" << std::endl;
+    std::cout << "ProvenanceGraph, nodes: ";
+    for (IndexVar node : nodes) {
+      std::cout << node << " ";
+    }
+    std::cout << std::endl;
+  });
 
   // Get SuchThat node with relations
   if (!isa<SuchThat>(concreteStmt)) {
     // No relations defined
+    executeIfDebug([&](){std::cout << "::ProvenanceGraph, No such that node found" << std::endl;});
     return;
   }
 
   SuchThat suchThat = to<SuchThat>(concreteStmt);
   vector<IndexVarRel> relations = suchThat.getPredicate();
+  executeIfDebug([&](){std::cout << "ProvenanceGraph: Found " << relations.size() << " relations" << std::endl;});
 
   for (IndexVarRel rel : relations) {
     std::vector<IndexVar> parents = rel.getNode()->getParents();

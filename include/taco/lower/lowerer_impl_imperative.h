@@ -23,6 +23,7 @@ class IndexStmt;
 class Assignment;
 class Yield;
 class Forall;
+class Forsome;
 class Where;
 class Multi;
 class SuchThat;
@@ -54,7 +55,7 @@ public:
   LowererImplImperative();
   virtual ~LowererImplImperative() = default;
 
-  /// Lower an index statement to an IR function.
+  /// Lower an index statement to an IR functifon.
   ir::Stmt lower(IndexStmt stmt, std::string name, 
                  bool assemble, bool compute, bool pack, bool unpack);
 
@@ -66,6 +67,11 @@ protected:
   /// Lower a yield statement.
   virtual ir::Stmt lowerYield(Yield yield);
 
+  /// Lower a forsome statement.
+  virtual ir::Stmt lowerForsome(Forsome forsome);
+
+  /// Lower a forsame statement
+  virtual ir::Stmt lowerForsame(Forsame forsame);
 
   /// Lower a forall statement.
   virtual ir::Stmt lowerForall(Forall forall);
@@ -83,6 +89,14 @@ protected:
                                         MergeLattice caseLattice,
                                         std::set<Access> reducedAccesses,
                                         ir::Stmt recoveryStmt);
+
+  virtual ir::Stmt lowerForsomeDimension(Forsome forsome,
+                                        std::vector<Iterator> locators,
+                                        std::vector<Iterator> inserters,
+                                        std::vector<Iterator> appenders,
+                                        MergeLattice caseLattice,
+                                        std::set<Access> reducedAccesses
+                                      );
 
   /// Lower a forall that iterates over all the coordinates in the forall index
   /// var's dimension, and locates tensor positions from the locate iterators.
@@ -115,6 +129,22 @@ protected:
                                        MergeLattice caseLattice,
                                        std::set<Access> reducedAccesses,
                                        ir::Stmt recoveryStmt);
+
+  virtual ir::Stmt lowerForsamePosition(Forsame forsame, Iterator iterator,
+    std::vector<Iterator> locaters,
+    std::vector<Iterator> inserters,
+    std::vector<Iterator> appenders,
+    MergeLattice caseLattice,
+    std::set<Access> reducedAccesses);
+
+  virtual ir::Stmt lowerForsomePosition(Forsome forsome,
+    Iterator iterator,
+    std::vector<Iterator> locators,
+    std::vector<Iterator> inserters,
+    std::vector<Iterator> appenders,
+    MergeLattice caseLattice,
+    std::set<Access> reducedAccesses
+  );
 
   virtual ir::Stmt lowerForallFusedPosition(Forall forall, Iterator iterator,
                                        std::vector<Iterator> locaters,
@@ -196,6 +226,13 @@ protected:
                                    const std::set<Access>& reducedAccesses, 
                                    MergeStrategy mergeStrategy);
 
+  virtual ir::Stmt lowerForsomeBody(ir::Expr coordinate, IndexStmt stmt,
+                                  std::vector<Iterator> locators, 
+                                  std::vector<Iterator> inserters, 
+                                  std::vector<Iterator> appenders,
+                                  MergeLattice caseLattice, 
+                                  const std::set<Access>& reducedAccesses, 
+                                  MergeStrategy mergeStrategy);
 
   /// Lower a where statement.
   virtual ir::Stmt lowerWhere(Where where);
@@ -498,6 +535,12 @@ protected:
   /// loop iterator variable should be incremented when the guard is fired.
   ir::Stmt strideBoundsGuard(Iterator iterator, ir::Expr access, bool incrementPosVar);
 
+  ir::Stmt initForSameTemps(IndexStmt stmt, 
+    std::vector<ir::Expr>& forsameVarDecl, 
+    const std::map<TensorVar, 
+    ir::Expr>& tensorVars, 
+    const Iterators& iterators);
+
 private:
   bool assemble;
   bool compute;
@@ -595,6 +638,12 @@ private:
 
   /// Visitor methods can add code to emit it to the function footer.
   std::vector<ir::Stmt> footer;
+
+  std::vector<ir::Expr> forsameVarDecl;
+
+  // Expression A(i,j) = B(i,j) * C(j,i)
+  // index variable i, C(j,i), idxptr_C_j_i, C1_dimension
+  std::vector<std::tuple<IndexVar, Access, ir::Expr, ir::Expr>> forsomeIdxPointerMemCpyInit;
 
   class Visitor;
   friend class Visitor;

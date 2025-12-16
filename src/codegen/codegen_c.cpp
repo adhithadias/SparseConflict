@@ -126,6 +126,35 @@ const string cHeaders =
   "  }\n"
   "  return lowerBound;\n"
   "}\n"
+  "inline __attribute__((always_inline)) int index_search(int *array, int arrayStart, int arrayEnd, int target) {\n"
+  "  if (array[arrayStart] > target || ((arrayEnd - arrayStart > 0) && array[arrayEnd-1] < target)) {\n"
+  "    return -1; // early exit\n"
+  "  }\n"
+  "  if (arrayEnd - arrayStart > 5) {\n"
+  "  while (arrayEnd - arrayStart >= 0) {\n"
+  "    int mid = (arrayEnd + arrayStart) / 2;\n"
+  "    int midValue = array[mid];\n"
+  "    if (midValue < target) {\n"
+  "      arrayStart = mid + 1;\n"
+  "    }\n"
+  "    else if (midValue > target) {\n"
+  "      arrayEnd = mid - 1;\n"
+  "    }\n"
+  "    else {\n"
+  "      return mid;\n"
+  "    }\n"
+  "  }\n"
+  "  }\n"
+  "  else {\n"
+  "    for (int32_t idx = arrayStart; idx < arrayEnd; idx++) {\n"
+  "      int32_t column_idx = array[idx];\n"
+  "      if (column_idx == target) {\n"
+  "        return idx;\n"
+  "      }\n"
+  "    }\n"
+  "  }\n"
+  "  return -1;\n"
+  "}\n"
   "taco_tensor_t* init_taco_tensor_t(int32_t order, int32_t csize,\n"
   "                                  int32_t* dimensions, int32_t* mode_ordering,\n"
   "                                  taco_mode_t* mode_types) {\n"
@@ -531,6 +560,29 @@ void CodeGen_C::visit(const Max* op) {
   for (size_t i=0; i<op->operands.size()-1; i++) {
     stream << ")";
   }
+}
+
+void CodeGen_C::visit(const Memcpy* op) {
+  doIndent();
+  stream << "memcpy(";
+  op->dest.accept(this);
+  stream << ", ";
+  op->src.accept(this);
+  stream << ", sizeof(int32_t) * ";
+  op->size.accept(this);
+  stream << ");";
+}
+
+void CodeGen_C::visit(const Memset* op) {
+  doIndent();
+  stream << "memset(";
+  op->dest.accept(this);
+  stream << ", ";
+  op->value.accept(this);
+  stream << ", ";
+  op->size.accept(this);
+  stream << ");";
+  stream << endl;
 }
 
 void CodeGen_C::visit(const Allocate* op) {

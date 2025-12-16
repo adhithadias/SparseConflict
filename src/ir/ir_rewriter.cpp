@@ -285,6 +285,30 @@ void IRRewriter::visit(const Malloc* op) {
   }
 }
 
+void IRRewriter::visit(const Memcpy* op) {
+  Expr dest = rewrite(op->dest);
+  Expr src = rewrite(op->src);
+  Expr size = rewrite(op->size);
+  if (dest == op->dest && src == op->src && size == op->size) {
+    stmt = op;
+  }
+  else {
+    stmt = Memcpy::make(dest, src, size);
+  }
+}
+
+void IRRewriter::visit(const Memset* op) {
+  Expr dest = rewrite(op->dest);
+  Expr value = rewrite(op->value);
+  Expr size = rewrite(op->size);
+  if (dest == op->dest && value == op->value && size == op->size) {
+    stmt = op;
+  }
+  else {
+    stmt = Memset::make(dest, value, size);
+  }
+}
+
 void IRRewriter::visit(const Sizeof* op) {
   expr = op;
 }

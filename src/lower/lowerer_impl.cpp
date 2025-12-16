@@ -43,6 +43,8 @@ private:
   void visit(const AssignmentNode* node)    { stmt = impl->lowerAssignment(node); }
   void visit(const YieldNode* node)         { stmt = impl->lowerYield(node); }
   void visit(const ForallNode* node)        { stmt = impl->lowerForall(node); }
+  void visit(const ForsomeNode* node)       { stmt = impl->lowerForsome(node); }
+  void visit(const ForsameNode* node)       { stmt = impl->lowerForsame(node); }
   void visit(const WhereNode* node)         { stmt = impl->lowerWhere(node); }
   void visit(const MultiNode* node)         { stmt = impl->lowerMulti(node); }
   void visit(const SuchThatNode* node)      { stmt = impl->lowerSuchThat(node); }

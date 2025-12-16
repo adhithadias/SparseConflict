@@ -30,6 +30,22 @@
 
 namespace taco {
 
+// define Enum called FollowMode with two values Binary and Pointer
+enum class FollowMode {
+  // Keep `Binary` for existing code paths that compare to `FollowMode::Binary`.
+  // `BinarySearch` is provided as an alias for callers that used the newer
+  // name. Both names refer to the same enumerator value.
+  Binary,
+  BinarySearch = Binary,
+  Pointer,
+  PointerTrack = Pointer
+};
+
+// single external declaration of the global follow mode variable.
+// The definition is provided in a single source file to avoid creating
+// a separate static copy in every translation unit that includes this
+// header (which happens when using `static` at namespace scope in headers).
+extern FollowMode followMode;
 /// Inherits Access and adds a TensorBase object. Allows for tensor retreival
 /// for assignment setting and argument packing.
 struct AccessTensorNode;
@@ -447,6 +463,8 @@ public:
 
   /// Set to true to perform the assemble and compute stages simultaneously.
   void setAssembleWhileCompute(bool assembleWhileCompute);
+
+  void setNewPath(bool newPath);
 
   /// Get the source code of the kernel functions.
   std::string getSource() const;
@@ -903,6 +921,7 @@ struct TensorBase::Content {
   ir::Stmt           assembleFunc;
   ir::Stmt           computeFunc;
   bool               assembleWhileCompute;
+  bool               newPath = false;
   std::shared_ptr<ir::Module> module;
 
   size_t             coordinateBufferUsed;

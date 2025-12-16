@@ -34,6 +34,8 @@ public:
   void visit(const AssignmentNode*);
   void visit(const YieldNode*);
   void visit(const ForallNode*);
+  void visit(const ForsomeNode*);
+  void visit(const ForsameNode*);
   void visit(const WhereNode*);
   void visit(const MultiNode*);
   void visit(const SequenceNode*);

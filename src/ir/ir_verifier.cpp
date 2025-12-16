@@ -287,6 +287,18 @@ protected:
     op->num_elements.accept(this);
   }
 
+  void visit(const Memcpy *op) {
+    op->dest.accept(this);
+    op->src.accept(this);
+    op->size.accept(this);
+  }
+
+  void visit(const Memset *op) {
+    op->dest.accept(this);
+    op->value.accept(this);
+    op->size.accept(this);
+  }
+
   void visit(const Print *op) {
     // probably should check that the format string is correct for the
     // parameters in the node.

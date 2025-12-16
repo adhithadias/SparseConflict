@@ -189,6 +189,27 @@ void IndexNotationRewriter::visit(const ForallNode* op) {
   }
 }
 
+void IndexNotationRewriter::visit(const ForsomeNode* op) {
+  executeIfDebug([&]() {std::cout << "IndexNotationRewriter::visit begin" << std::endl;});
+  IndexStmt s = rewrite(op->stmt);
+  if (s == op->stmt) {
+    stmt = op;
+  }
+  else {
+    stmt = new ForsomeNode(op->indexVar, s, op->accesses, op->nonAccesses);
+  }
+}
+
+void IndexNotationRewriter::visit(const ForsameNode* op) {
+  IndexStmt s = rewrite(op->stmt);
+  if (s == op->stmt) {
+    stmt = op;
+  }
+  else {
+    stmt = new ForsameNode(op->indexVar, s, op->accesses);
+  }
+}
+
 void IndexNotationRewriter::visit(const WhereNode* op) {
   IndexStmt producer = rewrite(op->producer);
   IndexStmt consumer = rewrite(op->consumer);
@@ -339,6 +360,14 @@ struct ReplaceRewriter : public IndexNotationRewriter {
     SUBSTITUTE_STMT;
   }
 
+  void visit(const ForsomeNode* op) {
+    SUBSTITUTE_STMT;
+  }
+
+  void visit(const ForsameNode* op) {
+    SUBSTITUTE_STMT;
+  }
+  
   void visit(const WhereNode* op) {
     SUBSTITUTE_STMT;
   }

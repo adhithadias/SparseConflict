@@ -70,6 +70,9 @@ void Module::compileToSource(string path, string prefix) {
   source_file.open(path+prefix+file_ending);
   source_file << source.str();
   source_file.close();
+
+  // int i;
+  // std::cin >> i;
   
   ofstream header_file;
   header_file.open(path+prefix+".h");
@@ -128,7 +131,7 @@ string Module::compile() {
 #ifdef TACO_DEBUG
     // In debug mode, compile the generated code with debug symbols and a
     // low optimization level.
-    string defaultFlags = "-g -O0 -std=c99";
+    string defaultFlags = "-g -O0 -std=c99"; // debug flags
 #else
     // Otherwise, use the standard set of optimizing flags.
     string defaultFlags = "-O3 -ffast-math -std=c99";
@@ -145,11 +148,20 @@ string Module::compile() {
     prefix + file_ending + " " + shims_file + " " + 
     "-o " + fullpath + " -lm";
 
+  executeIfDebug([&]() {
+    std::cout << "Compiling with command: " << cmd << std::endl;
+  });
   // open the output file & write out the source
   compileToSource(tmpdir, libname);
   
   // write out the shims
   writeShims(funcs, tmpdir, libname);
+
+  string cmd2 = "mkdir -p ./tmp && cp " + prefix + file_ending + " ./tmp/" + libname + file_ending;
+
+  int err2 = system(cmd2.data());
+  taco_uassert(err2 == 0) << "Compilation command failed:\n" << cmd2
+    << "\nreturned " << err2;
   
   // now compile it
   int err = system(cmd.data());
@@ -160,6 +172,10 @@ string Module::compile() {
   if (lib_handle) {
     dlclose(lib_handle);
   }
+  
+  executeIfDebug([&](){
+    std::cout << "fullpath: " << fullpath << std::endl;
+  });
   lib_handle = dlopen(fullpath.data(), RTLD_NOW | RTLD_LOCAL);
   taco_uassert(lib_handle) << "Failed to load generated code, error is: " << dlerror();
 
@@ -176,6 +192,11 @@ string Module::getSource() {
 }
 
 void* Module::getFuncPtr(std::string name) {
+  executeIfDebug([&]() {
+    std::cout << "getFuncPtr: " << name << std::endl;
+    std::cout << "lib_handle: " << lib_handle << std::endl;
+  });
+
   return dlsym(lib_handle, name.data());
 }
 

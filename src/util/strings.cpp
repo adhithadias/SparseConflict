@@ -4,6 +4,13 @@
 
 using namespace std;
 
+// Function to execute a callable inside an #ifdef block
+void executeIfDebug(const std::function<void()>& func) {
+  #if PRINT_DEBUG
+      func();
+  #endif
+  }
+
 namespace taco {
 namespace util {
 

@@ -413,6 +413,39 @@ struct ForallNode : public IndexStmtNode {
   size_t unrollFactor = 0;
 };
 
+struct ForsomeNode : public IndexStmtNode {
+  ForsomeNode(IndexVar indexVar, IndexStmt stmt) : indexVar(indexVar), stmt(stmt) {}
+
+  ForsomeNode(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses,
+              std::vector<Access> nonAccesses)
+      : indexVar(indexVar), stmt(stmt), accesses(accesses),
+        nonAccesses(nonAccesses) {}
+
+  void accept(IndexStmtVisitorStrict* v) const {
+    v->visit(this);
+  }
+
+  IndexVar indexVar;
+  IndexStmt stmt;
+  std::vector<Access> accesses;
+  std::vector<Access> nonAccesses;
+};
+
+struct ForsameNode : public IndexStmtNode {
+  ForsameNode(IndexVar indexVar, IndexStmt stmt) : indexVar(indexVar), stmt(stmt) {}
+
+  ForsameNode(IndexVar indexVar, IndexStmt stmt, std::vector<Access> accesses)
+      : indexVar(indexVar), stmt(stmt), accesses(accesses) {}
+
+  void accept(IndexStmtVisitorStrict* v) const {
+    v->visit(this);
+  }
+
+  IndexVar indexVar;
+  IndexStmt stmt;
+  std::vector<Access> accesses;
+};
+
 struct WhereNode : public IndexStmtNode {
   WhereNode(IndexStmt consumer, IndexStmt producer)
       : consumer(consumer), producer(producer) {}

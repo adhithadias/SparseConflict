@@ -249,6 +249,10 @@ void TensorBase::setAssembleWhileCompute(bool assembleWhileCompute) {
   content->assembleWhileCompute = assembleWhileCompute;
 }
 
+void TensorBase::setNewPath(bool newPath) {
+  content->newPath = newPath;
+}
+
 static size_t numIntegersToCompare = 0;
 static int lexicographicalCmp(const void* a, const void* b) {
   for (size_t i = 0; i < numIntegersToCompare; i++) {
@@ -649,7 +653,9 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
 
   IndexStmt concretizedAssign = stmt;
   IndexStmt stmtToCompile = stmt.concretize();
+  executeIfDebug([&]() {std::cout << "TensorBase::compile, stmtToCompile: " << stmtToCompile << std::endl;});
   stmtToCompile = scalarPromote(stmtToCompile);
+  executeIfDebug([&]() {std::cout << "TensorBase::compile, stmtToCompile: " << stmtToCompile << std::endl;});
 
   if (!std::getenv("CACHE_KERNELS") ||
       std::string(std::getenv("CACHE_KERNELS")) != "0") {
@@ -661,8 +667,16 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
     }
   }
 
+  executeIfDebug([&](){std::cout << "TensorBase::Compile, assembleFunc begin" << std::endl;});
   content->assembleFunc = lower(stmtToCompile, "assemble", true, false);
+  executeIfDebug([&](){
+    std::cout << "TensorBase::Compile,assembleFunc: " << content->assembleFunc << std::endl;
+    std::cout << "TensorBase::Compile, computeFunc begin" << std::endl;
+  });
   content->computeFunc = lower(stmtToCompile, "compute",  assembleWhileCompute, true);
+  executeIfDebug([&](){
+    std::cout << "TensorBase::Compile, computeFunc: " << content->computeFunc << std::endl;
+  });
   // If we have to recompile the kernel, we need to create a new Module. Since
   // the module we are holding on to could have been retrieved from the cache,
   // we can't modify it.
@@ -817,7 +831,9 @@ void TensorBase::assemble() {
   }
 
   auto arguments = packArguments(*this);
+  executeIfDebug([&]() {std::cout << "Assemble arguments: " << arguments.size() << std::endl;});
   content->module->callFuncPacked("assemble", arguments.data());
+  executeIfDebug([&]() {std::cout << "Assemble done" << std::endl;});
 
   if (!content->assembleWhileCompute) {
     setNeedsAssemble(false);
@@ -831,7 +847,7 @@ void TensorBase::compute() {
   if (!needsCompute()) {
     return;
   }
-  setNeedsCompute(false);
+  // setNeedsCompute(false);
   // Sync operand tensors if needed.
   auto operands = getTensors(getAssignment().getRhs());
   for (auto& operand : operands) {
@@ -840,10 +856,11 @@ void TensorBase::compute() {
   }
 
   auto arguments = packArguments(*this);
+  // executeIfDebug([&]() {std::cout << "Calling comupute with " << arguments.size() << " arguments" << std::endl;});
   this->content->module->callFuncPacked("compute", arguments.data());
 
   if (content->assembleWhileCompute) {
-    setNeedsAssemble(false);
+    // setNeedsAssemble(false);
     taco_tensor_t* tensorData = ((taco_tensor_t*)arguments[0]);
     content->valuesSize = unpackTensorData(*tensorData, *this);
   }

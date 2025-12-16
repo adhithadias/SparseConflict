@@ -249,6 +249,39 @@ void IndexNotationPrinter::visit(const ForallNode* op) {
   os << ")";
 }
 
+void IndexNotationPrinter::visit(const ForsomeNode* op) {
+  os << "forsome(" << op->indexVar << " {";
+  for (auto iter = op->accesses.begin(); iter != op->accesses.end(); ++iter) {
+    os << *iter;
+    if (iter + 1 != op->accesses.end()) {
+      os << "; ";
+    }
+  }
+  os << "} xx {";
+  for (auto iter = op->nonAccesses.begin(); iter != op->nonAccesses.end(); ++iter) {
+    os << *iter;
+    if (iter + 1 != op->nonAccesses.end()) {
+      os << "; ";
+    }
+  }
+  os << "}, ";
+  op->stmt.accept(this);
+  os << ")";
+}
+
+void IndexNotationPrinter::visit(const ForsameNode* op) {
+  os << "forsame(" << op->indexVar << " {";
+  for (auto iter = op->accesses.begin(); iter != op->accesses.end(); ++iter) {
+    os << *iter;
+    if (iter + 1 != op->accesses.end()) {
+      os << "; ";
+    }
+  }
+  os << "}, ";
+  op->stmt.accept(this);
+  os << ")";
+}
+
 void IndexNotationPrinter::visit(const WhereNode* op) {
   os << "where(";
   op->consumer.accept(this);

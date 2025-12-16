@@ -1836,11 +1836,13 @@ IndexStmt reorderLoopsTopologically(IndexStmt stmt) {
 IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph, 
                         bool isWholeStmt, bool promoteScalar) {
   std::map<Access,const ForallNode*> hoistLevel;
+  std::map<Access,const ForsomeNode*> hoistForsomeLevel;
   std::map<Access,IndexExpr> reduceOp;
   struct FindHoistLevel : public IndexNotationVisitor {
     using IndexNotationVisitor::visit;
 
     std::map<Access,const ForallNode*>& hoistLevel;
+    std::map<Access,const ForsomeNode*>& hoistForsomeLevel;
     std::map<Access,IndexExpr>& reduceOp;
     std::map<Access,std::set<IndexVar>> hoistIndices;
     std::set<IndexVar> derivedIndices;
@@ -1850,10 +1852,12 @@ IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph,
     const bool promoteScalar;
     
     FindHoistLevel(std::map<Access,const ForallNode*>& hoistLevel,
+                   std::map<Access, const ForsomeNode*>& hoistForsomeLevel,
                    std::map<Access,IndexExpr>& reduceOp,
                    const ProvenanceGraph& provGraph,
                    bool isWholeStmt, bool promoteScalar) : 
-        hoistLevel(hoistLevel), reduceOp(reduceOp), provGraph(provGraph),
+        hoistLevel(hoistLevel), hoistForsomeLevel(hoistForsomeLevel),
+        reduceOp(reduceOp), provGraph(provGraph),
         isWholeStmt(isWholeStmt), promoteScalar(promoteScalar) {}
 
     void visit(const ForallNode* node) {
@@ -1863,7 +1867,8 @@ IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph,
       // Don't allow hoisting out of forall's for GPU warp and block reduction
       if (foralli.getParallelUnit() == ParallelUnit::GPUWarpReduction || 
           foralli.getParallelUnit() == ParallelUnit::GPUBlockReduction) {
-        FindHoistLevel findHoistLevel(hoistLevel, reduceOp, provGraph, false, 
+        FindHoistLevel findHoistLevel(hoistLevel, hoistForsomeLevel, reduceOp,
+                                      provGraph, false, 
                                       promoteScalar);
         foralli.getStmt().accept(&findHoistLevel);
         return;
@@ -1915,6 +1920,56 @@ IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph,
       }
     }
 
+    void visit(const ForsomeNode* node) {
+      Forsome forsomei(node);
+      IndexVar i = forsomei.getIndexVar();
+
+      std::vector<Access> resultAccesses;
+      std::tie(resultAccesses, std::ignore) = getResultAccesses(forsomei);
+      for (const auto& resultAccess : resultAccesses) {
+        if (!promoteScalar && resultAccess.getIndexVars().empty()) {
+          continue;
+        }
+
+        std::set<IndexVar> resultIndices(resultAccess.getIndexVars().begin(),
+                                         resultAccess.getIndexVars().end());
+        if (std::includes(indices.begin(), indices.end(), 
+                          resultIndices.begin(), resultIndices.end()) &&
+            !util::contains(hoistLevel, resultAccess)) {
+          hoistForsomeLevel[resultAccess] = node;
+          hoistIndices[resultAccess] = indices;
+
+          auto resultDerivedIndices = resultIndices;
+          for (const auto& iv : resultIndices) {
+            for (const auto& div : provGraph.getFullyDerivedDescendants(iv)) {
+              resultDerivedIndices.insert(div);
+            }
+          }
+          if (!isWholeStmt || resultDerivedIndices != derivedIndices) {
+            reduceOp[resultAccess] = IndexExpr();
+          }
+        }
+      }
+
+      auto newIndices = provGraph.newlyRecoverableParents(i, derivedIndices);
+      newIndices.push_back(i);
+      derivedIndices.insert(newIndices.begin(), newIndices.end());
+
+      const auto underivedIndices = getIndexVars(forsomei);
+      for (const auto& newIndex : newIndices) {
+        if (util::contains(underivedIndices, newIndex)) {
+          indices.insert(newIndex);
+        }
+      }
+
+      IndexNotationVisitor::visit(node);
+
+      for (const auto& newIndex : newIndices) {
+        indices.erase(newIndex);
+        derivedIndices.erase(newIndex);
+      }
+    }
+
     void visit(const AssignmentNode* op) {
       if (util::contains(hoistLevel, op->lhs) && 
           hoistIndices[op->lhs] == indices) {
@@ -1925,7 +1980,7 @@ IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph,
       }
     }
   };
-  FindHoistLevel findHoistLevel(hoistLevel, reduceOp, provGraph, isWholeStmt, 
+  FindHoistLevel findHoistLevel(hoistLevel, hoistForsomeLevel, reduceOp, provGraph, isWholeStmt, 
                                 promoteScalar);
   stmt.accept(&findHoistLevel);
   
@@ -1933,11 +1988,80 @@ IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph,
     using IndexNotationRewriter::visit;
 
     const std::map<Access,const ForallNode*>& hoistLevel;
+    const std::map<Access,const ForsomeNode*>& hoistForsomeLevel;
     const std::map<Access,IndexExpr>& reduceOp;
 
     HoistWrites(const std::map<Access,const ForallNode*>& hoistLevel,
+                const std::map<Access,const ForsomeNode*>& hoistForsomeLevel,
                 const std::map<Access,IndexExpr>& reduceOp) : 
-        hoistLevel(hoistLevel), reduceOp(reduceOp) {}
+        hoistLevel(hoistLevel), hoistForsomeLevel(hoistForsomeLevel), reduceOp(reduceOp) {}
+
+    void visit(const ForsomeNode* node) {
+      Forsome forsomei(node);
+      executeIfDebug([&]() {
+        std::cout << "Transformations HoistWrites hoistForsomeLevel:: forsomei: " << forsomei << std::endl;
+        std::cout << "Transformations hoistForsomeLevel: " << std::endl;
+        for (const auto& resultAccess : hoistForsomeLevel) {
+          std::cout << "Transformations hoistForsomeLevel:: resultAccess: " << resultAccess.first << ", node: " << resultAccess.second << std::endl;
+        }
+      });
+      IndexVar i = forsomei.getIndexVar();
+      IndexStmt body = rewrite(forsomei.getStmt());
+      executeIfDebug([&]() {
+        std::cout << "Transformations visit Forsomenode:: body: " << body << std::endl;
+      });
+      std::vector<IndexStmt> consumers;
+      std::vector<Access> resultAccesses;
+      for (const auto& resultAccess : hoistForsomeLevel) {
+        executeIfDebug([&]() {std::cout << "Transformations hoistForsomeLevel:: resultAccess: " << resultAccess.first << std::endl;});
+        if (resultAccess.second == node) {
+          // This assumes the index expression yields at most one result tensor; 
+          // will not work correctly if there are multiple results.
+          TensorVar resultVar = resultAccess.first.getTensorVar();
+          TensorVar val("t" + i.getName() + resultVar.getName(), 
+                        Type(resultVar.getType().getDataType(), {}));
+          body = ReplaceReductionExpr(
+              map<Access,Access>({{resultAccess.first, val()}})).rewrite(body);
+
+          IndexExpr op = util::contains(reduceOp, resultAccess.first) 
+                        ? reduceOp.at(resultAccess.first) : IndexExpr();
+          IndexStmt consumer = Assignment(Access(resultAccess.first), val(), op);
+          resultAccesses.push_back(resultAccess.first);
+          consumers.push_back(consumer);
+        }
+      }
+
+      if (body == forsomei.getStmt()) {
+        taco_iassert(consumers.empty());
+        stmt = node;
+        return;
+      }
+
+      for (const auto& resultAccess : forsomei.getAccesses()) {
+        resultAccesses.push_back(resultAccess);
+      }
+
+      executeIfDebug([&]() {
+        // print resultAccesses
+        std::cout << "Transformations:: resultAccesses: " << std::endl;
+        for (const auto& resultAccess : resultAccesses) {
+          std::cout << resultAccess << std::endl;
+        }
+      
+        std::cout << "Transformations:: consumers: " << std::endl;
+        for (const auto& consumer : consumers) {
+          std::cout << consumer << std::endl;
+        }
+        // print body
+        std::cout << "Transformations:: body: " << std::endl;
+        std::cout << body << std::endl;
+      });
+
+      stmt = forsome(i, body, forsomei.getAccesses(), forsomei.getNonAccesses());
+      for (const auto& consumer : consumers) {
+        stmt = where(consumer, stmt);
+      }
+    }
 
     void visit(const ForallNode* node) {
       Forall foralli(node);
@@ -1975,7 +2099,7 @@ IndexStmt scalarPromote(IndexStmt stmt, ProvenanceGraph provGraph,
       }
     }
   };
-  HoistWrites hoistWrites(hoistLevel, reduceOp);
+  HoistWrites hoistWrites(hoistLevel, hoistForsomeLevel, reduceOp);
   return hoistWrites.rewrite(stmt);
 }
 

@@ -281,6 +281,7 @@ ModeFunction Iterator::coordAccess(const std::vector<ir::Expr>& coords) const {
 
 ModeFunction Iterator::posBounds(const ir::Expr& parentPos) const {
   taco_iassert(defined() && content->mode.defined());
+  executeIfDebug([&]() {std::cout << " Iterator::posBounds: " << *this << std::endl;});
   return getMode().getModeFormat().impl->posIterBounds(parentPos, getMode());
 }
 
@@ -491,9 +492,39 @@ std::ostream& operator<<(std::ostream& os, const Iterator& iterator) {
   }
   // Dimension iterator
   if (iterator.isDimensionIterator()) {
-    return os << "\u0394" << iterator.getIndexVar().getName();
+    return os << "\u0394" << iterator.getIndexVar().getName() << "(: " << iterator.getParent() << ")";
   }
-  return os << iterator.getTensor();
+  return os << iterator.getTensor() << "(p: " << iterator.getParent() << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, const vector<Iterator>& iterators) {
+  os << "[";
+  for (size_t i = 0; i < iterators.size(); i++) {
+    os << iterators[i];
+    if (i != iterators.size() - 1) {
+      os << ", \n";
+    }
+  }
+  os << "]";
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const Iterators& iterators) {
+  os << "-- Iterators --\n";
+  os << "Level Iterators: ";
+  for (auto& levelIterator : iterators.levelIterators()) {
+    os << levelIterator.first << " -> " << levelIterator.second << ", ";
+  }
+  std::cout << "\nMode Iterators: ";
+  for (auto& modeIterator : iterators.modeIterators()) {
+    os << modeIterator.first << " -> " << modeIterator.second << ", ";
+  }
+  std::cout << "\nMode Accesses: ";
+  for (auto& modeAccess : iterators.modeAccesses()) {
+    os << modeAccess.first << " -> " << modeAccess.second << ", ";
+  }
+  os << "\n";
+  return os;
 }
 
 
@@ -518,7 +549,9 @@ Iterators::Iterators(IndexStmt stmt) : Iterators(stmt, createIRTensorVars(stmt))
 Iterators::Iterators(IndexStmt stmt, const map<TensorVar, Expr>& tensorVars)
 : Iterators()
 {
+  executeIfDebug([&](){std::cout << "Creating iterators for stmt: " << stmt << std::endl;});
   ProvenanceGraph provGraph = ProvenanceGraph(stmt);
+  // std::cout << "Provenance graph: " << provGraph << std::endl;
   set<IndexVar> underivedAdded;
   set<IndexVar> computeVars;
   // Create dimension iterators
@@ -541,6 +574,16 @@ Iterators::Iterators(IndexStmt stmt, const map<TensorVar, Expr>& tensorVars)
         }
       }
 
+      m->match(n->stmt);
+    }),
+    function<void(const ForsomeNode*, Matcher*)>([&](auto n, auto m) {
+      content->modeIterators.insert({n->indexVar, Iterator(n->indexVar, !provGraph.hasCoordBounds(n->indexVar)
+        && provGraph.isCoordVariable(n->indexVar))});
+      m->match(n->stmt);
+    }),
+    function<void(const ForsameNode*, Matcher*)>([&](auto n, auto m) {
+      content->modeIterators.insert({n->indexVar, Iterator(n->indexVar, !provGraph.hasCoordBounds(n->indexVar)
+        && provGraph.isCoordVariable(n->indexVar))});
       m->match(n->stmt);
     }),
     function<void(const IndexVarNode*)>([&](const IndexVarNode* var) {
@@ -661,6 +704,11 @@ Iterator Iterators::levelIterator(ModeAccess modeAccess) const
 std::map<ModeAccess,Iterator> Iterators::levelIterators() const
 {
   return content->levelIterators;
+}
+
+std::map<Iterator, ModeAccess> Iterators::modeAccesses() const
+{
+  return content->modeAccesses;
 }
 
 

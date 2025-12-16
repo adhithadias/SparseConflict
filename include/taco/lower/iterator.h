@@ -220,6 +220,7 @@ public:
   friend bool operator==(const Iterator&, const Iterator&);
   friend bool operator<(const Iterator&, const Iterator&);
   friend std::ostream& operator<<(std::ostream&, const Iterator&);
+  friend std::ostream& operator<<(std::ostream&, const std::vector<Iterator>&);
 
 private:
   struct Content;
@@ -272,6 +273,8 @@ public:
    */
   ModeAccess modeAccess(Iterator) const;
 
+  std::map<Iterator, ModeAccess> modeAccesses() const;
+
   /**
    * Retrieve the mode iterator corresponding to the given index variable.
    */
@@ -292,6 +295,8 @@ std::vector<Iterator> getAppenders(const std::vector<Iterator>& iterators);
 
 /// Filter out and return the iterators with the insert capability.
 std::vector<Iterator> getInserters(const std::vector<Iterator>& iterators);
+
+std::ostream& operator<<(std::ostream& os, const Iterators& iterators);
 
 }
 #endif

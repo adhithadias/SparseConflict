@@ -30,6 +30,8 @@ struct IndexVarNode;
 struct AssignmentNode;
 struct YieldNode;
 struct ForallNode;
+struct ForsomeNode;
+struct ForsameNode;
 struct WhereNode;
 struct MultiNode;
 struct SequenceNode;
@@ -68,6 +70,8 @@ public:
   virtual void visit(const AssignmentNode*) = 0;
   virtual void visit(const YieldNode*) = 0;
   virtual void visit(const ForallNode*) = 0;
+  virtual void visit(const ForsomeNode*) = 0;
+  virtual void visit(const ForsameNode*) = 0;
   virtual void visit(const WhereNode*) = 0;
   virtual void visit(const SequenceNode*) = 0;
   virtual void visit(const AssembleNode*) = 0;
@@ -113,6 +117,8 @@ public:
   virtual void visit(const AssignmentNode* node);
   virtual void visit(const YieldNode* node);
   virtual void visit(const ForallNode* node);
+  virtual void visit(const ForsomeNode* node);
+  virtual void visit(const ForsameNode* node);
   virtual void visit(const WhereNode* node);
   virtual void visit(const SequenceNode* node);
   virtual void visit(const AssembleNode* node);
@@ -184,6 +190,8 @@ private:
   RULE(AssignmentNode)
   RULE(YieldNode)
   RULE(ForallNode)
+  RULE(ForsomeNode)
+  RULE(ForsameNode)
   RULE(WhereNode)
   RULE(MultiNode)
   RULE(SequenceNode)

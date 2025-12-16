@@ -1020,6 +1020,16 @@ void CodeGen_CUDA::visit(const Max* op) {
   }
 }
 
+void CodeGen_CUDA::visit(const Memcpy* op) {
+  // not implemented
+  return;
+}
+
+void CodeGen_CUDA::visit(const Memset* op) {
+  // not implemented
+  return;
+}
+
 void CodeGen_CUDA::visit(const Allocate* op) {
   string elementType = printCUDAType(op->var.type(), false);
   if (!isHostFunction) {

@@ -1827,7 +1827,16 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
 
   executeIfDebug([&]{std::cout << "Lowering forall position loop" << std::endl;});
   Expr coordinate = getCoordinateVar(forsame.getIndexVar());
-  executeIfDebug([&]{std::cout << "Coordinate: " << coordinate << std::endl;});
+  // get CoordinateVar of the parent index var
+  // TODO - parent index of forsame node is assumed to be in between the forsome
+  // and forsame nodes. However, there can be multiple levels in between. Need to
+  // generalize this to handle multiple levels.
+  Expr parentCoordinate = getCoordinateVar(iterator.getParent().getIndexVar());
+  
+  executeIfDebug([&]{
+    std::cout << "Coordinate: " << coordinate << std::endl;
+    std::cout << "Parent Coordinate: " << parentCoordinate << std::endl;
+  });
   Stmt declareCoordinate = Stmt();
   Stmt strideGuard = Stmt();
   Stmt boundsGuard = Stmt();
@@ -1963,10 +1972,8 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
       Expr pointerArrayVar = std::get<2>(initTuple);
       Expr dim = std::get<3>(initTuple);
 
-
-
       // found decl
-      Stmt declarePosVar = ir::VarDecl::make(iterPosVar, ir::Add::make(ir::Load::make(pointerArrayVar, parentActual), startBound));
+      Stmt declarePosVar = ir::VarDecl::make(iterPosVar, ir::Add::make(ir::Load::make(pointerArrayVar, parentCoordinate), startBound));
 
       if (forsomeIndexVar == forsame.getIndexVar()) {
         // while (pointerArrayVar[j] < endBound && iterator.getMode().getModePack().getArray(1)[pointerArrayVar[j]] < coordinate) {pointerArrayVar[ipos]++;}
@@ -1975,7 +1982,7 @@ Stmt LowererImplImperative::lowerForsamePosition(Forsame forsame,
         Expr whileCond = ir::And::make(cond1, cond2);
         // create statement to increment iterPosVar by 1
         Stmt incrementIterPosVar = ir::Assign::make(iterPosVar, ir::Add::make(iterPosVar, ir::Literal::make(1, iterPosVar.type())));
-        Stmt storePointer = ir::Store::make(pointerArrayVar, parentActual, ir::Sub::make(iterPosVar, startBound));
+        Stmt storePointer = ir::Store::make(pointerArrayVar, parentCoordinate, ir::Sub::make(iterPosVar, startBound));
         
         Stmt whileStmt = ir::While::make(whileCond, incrementIterPosVar);
         executeIfDebug([&]{

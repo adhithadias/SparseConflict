@@ -3423,10 +3423,10 @@ IndexStmt makeConcreteNotation(IndexStmt stmt, bool newPath /*= false*/) {
       if (outputIsSparse) {
         // indices in the output should appear first
         // accPat.mapIndexVars[node->lhs.getTensorVar()] = node->lhs.getIndexVars();
-        allSCS = taco::util::getAllSCS(accPat.constraints, freeVars);
+        allSCS = taco::util::findAllSCSWithPrefix(accPat.constraints, freeVars);
       } else {
         // indices in the output can appear anywhere
-        allSCS = taco::util::getAllSCS(accPat.constraints, {});
+        allSCS = taco::util::findAllSCSWithPrefix(accPat.constraints, {});
       }
 
       executeIfDebug([&]() {

@@ -1,18 +1,19 @@
 #ifndef TACO_UTIL_ALGO_H
 #define TACO_UTIL_ALGO_H
 
-namespace taco {
-namespace util {
-
 #include <iostream>
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
 #include <set>
-
-#include "taco/index_notation/index_notation.h"
+#include <queue>
 
 using namespace std;
+
+namespace taco {
+namespace util {
+
+#include "taco/index_notation/index_notation.h"
 
 bool isSparse(const TensorVar& access);
 
@@ -136,6 +137,126 @@ vector<Type> findSCS(const vector<vector<Type>>& sequences,
     scs.insert(scs.begin(), fixedSeq.begin(), fixedSeq.end());
 
     return scs;
+}
+
+// The StateNode struct remains the same
+template <typename Type>
+struct StateNode {
+    std::vector<size_t> indices;
+    std::vector<Type> path;
+};
+
+// New function to handle the fixed prefix
+template <typename Type>
+std::set<std::vector<Type>> findAllSCSWithPrefix(
+    const std::vector<std::vector<Type>>& sequences,
+    const std::vector<Type>& fixedSeq) {
+    
+    std::set<std::vector<Type>> solutions;
+    if (sequences.empty()) {
+        solutions.insert(fixedSeq);
+        return solutions;
+    }
+
+    std::vector<std::vector<Type>> filtered_sequences;
+    for(const auto& seq : sequences) {
+        if (!seq.empty()) {
+            filtered_sequences.push_back(seq);
+        }
+    }
+    if (filtered_sequences.empty()) {
+        solutions.insert(fixedSeq);
+        return solutions;
+    }
+
+    int n = filtered_sequences.size();
+    
+    // =================================================================
+    // 1. COMPUTE THE NEW INITIAL STATE based on fixedSeq
+    // =================================================================
+    std::vector<size_t> start_indices(n, 0);
+    for (int i = 0; i < n; ++i) {
+        size_t seq_ptr = 0; // Pointer for the sequence S_i
+        // Find how many elements of S_i are covered by fixedSeq
+        for (size_t prefix_ptr = 0; prefix_ptr < fixedSeq.size() && seq_ptr < filtered_sequences[i].size(); ++prefix_ptr) {
+            if (fixedSeq[prefix_ptr] == filtered_sequences[i][seq_ptr]) {
+                seq_ptr++;
+            }
+        }
+        start_indices[i] = seq_ptr;
+    }
+
+    // =================================================================
+    // 2. INITIALIZE BFS from the new state
+    // =================================================================
+    std::queue<StateNode<Type>> q;
+    std::map<std::vector<size_t>, size_t> distances;
+
+    StateNode<Type> start;
+    start.indices = start_indices;
+    start.path = fixedSeq; // The path starts with the fixed sequence
+    
+    q.push(start);
+    distances[start.indices] = fixedSeq.size();
+
+    size_t min_len = std::numeric_limits<size_t>::max();
+
+    // =================================================================
+    // 3. RUN BFS (This part is identical to the original algorithm)
+    // =================================================================
+    while (!q.empty()) {
+        StateNode<Type> current = q.front();
+        q.pop();
+        
+        if (current.path.size() > min_len) {
+            continue;
+        }
+
+        bool is_goal = true;
+        for (int i = 0; i < n; ++i) {
+            if (current.indices[i] < filtered_sequences[i].size()) {
+                is_goal = false;
+                break;
+            }
+        }
+
+        if (is_goal) {
+            if (min_len == std::numeric_limits<size_t>::max()) {
+                min_len = current.path.size();
+            }
+            solutions.insert(current.path);
+            continue;
+        }
+
+        std::set<Type> next_chars;
+        for (int i = 0; i < n; ++i) {
+            if (current.indices[i] < filtered_sequences[i].size()) {
+                next_chars.insert(filtered_sequences[i][current.indices[i]]);
+            }
+        }
+
+        for (const Type& ch : next_chars) {
+            StateNode<Type> next_node;
+            next_node.path = current.path;
+            next_node.path.push_back(ch);
+            next_node.indices = current.indices;
+
+            for (int i = 0; i < n; ++i) {
+                if (next_node.indices[i] < filtered_sequences[i].size() && 
+                    filtered_sequences[i][next_node.indices[i]] == ch) {
+                    next_node.indices[i]++;
+                }
+            }
+
+            auto it = distances.find(next_node.indices);
+            if (it == distances.end() || next_node.path.size() <= it->second) {
+                distances[next_node.indices] = next_node.path.size();
+                q.push(next_node);
+            }
+        }
+    }
+
+    return solutions;
 }
 
 template <typename Type>

@@ -163,6 +163,18 @@ void IRVisitor::visit(const Malloc* op) {
   op->size.accept(this);
 }
 
+void IRVisitor::visit(const Memcpy* op) {
+  op->dest.accept(this);
+  op->src.accept(this);
+  op->size.accept(this);
+}
+
+void IRVisitor::visit(const Memset* op) {
+  op->dest.accept(this);
+  op->value.accept(this);
+  op->size.accept(this);
+}
+
 void IRVisitor::visit(const Sizeof* op) {
 }
 

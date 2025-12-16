@@ -575,6 +575,12 @@ ir::Stmt simplify(const ir::Stmt& stmt) {
       void visit(const Malloc* op) {
         stmt = Stmt();
       }
+      void visit(const Memcpy* op) {
+        stmt = Stmt();
+      }
+      void visit(const Memset* op) {
+        stmt = Stmt();
+      }
       void visit(const Store* op) {
         stmt = Stmt();
       }

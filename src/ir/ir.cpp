@@ -535,6 +535,30 @@ Expr Malloc::make(Expr size) {
   return malloc;
 }
 
+// Memcpy
+Stmt Memcpy::make(Expr dest, Expr src, Expr size) {
+  taco_iassert(dest.defined());
+  taco_iassert(src.defined());
+  taco_iassert(size.defined());
+  Memcpy *memcpy = new Memcpy;
+  memcpy->dest = dest;
+  memcpy->src = src;
+  memcpy->size = size;
+  return memcpy;
+}
+
+// Memset
+Stmt Memset::make(Expr dest, Expr value, Expr size) {
+  taco_iassert(dest.defined());
+  taco_iassert(value.defined());
+  taco_iassert(size.defined());
+  Memset *memset = new Memset;
+  memset->dest = dest;
+  memset->value = value;
+  memset->size = size;
+  return memset;
+}
+
 // Sizeof
 Expr Sizeof::make(Type type) {
   Sizeof *szeof = new Sizeof;
@@ -958,6 +982,10 @@ template<> void ExprNode<Load>::accept(IRVisitorStrict *v)
     const { v->visit((const Load*)this); }
 template<> void ExprNode<Malloc>::accept(IRVisitorStrict *v)
     const { v->visit((const Malloc*)this); }
+template<> void StmtNode<Memcpy>::accept(IRVisitorStrict *v)
+  const { v->visit((const Memcpy*)this); }
+template<> void StmtNode<Memset>::accept(IRVisitorStrict *v)
+  const { v->visit((const Memset*)this); }
 template<> void ExprNode<Sizeof>::accept(IRVisitorStrict *v)
     const { v->visit((const Sizeof*)this); }
 template<> void StmtNode<Store>::accept(IRVisitorStrict *v)

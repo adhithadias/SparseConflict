@@ -38,6 +38,8 @@ protected:
   void visit(const Min*);
   void visit(const Max*);
   void visit(const Allocate*);
+  void visit(const Memcpy*);
+  void visit(const Memset*);
   void visit(const Sqrt*);
   void visit(const Store*);
   void visit(const Assign*);

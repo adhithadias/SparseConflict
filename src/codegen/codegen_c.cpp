@@ -562,6 +562,29 @@ void CodeGen_C::visit(const Max* op) {
   }
 }
 
+void CodeGen_C::visit(const Memcpy* op) {
+  doIndent();
+  stream << "memcpy(";
+  op->dest.accept(this);
+  stream << ", ";
+  op->src.accept(this);
+  stream << ", sizeof(int32_t) * ";
+  op->size.accept(this);
+  stream << ");";
+}
+
+void CodeGen_C::visit(const Memset* op) {
+  doIndent();
+  stream << "memset(";
+  op->dest.accept(this);
+  stream << ", ";
+  op->value.accept(this);
+  stream << ", ";
+  op->size.accept(this);
+  stream << ");";
+  stream << endl;
+}
+
 void CodeGen_C::visit(const Allocate* op) {
   string elementType = printCType(op->var.type(), false);
 

@@ -50,6 +50,8 @@ enum class IRNodeType {
   Switch,
   Load,
   Malloc,
+  Memcpy,
+  Memset,
   Sizeof,
   Store,
   For,
@@ -526,6 +528,28 @@ public:
   static Expr make(Expr size);
 
   static const IRNodeType _type_info = IRNodeType::Malloc;
+};
+
+struct Memcpy : public StmtNode<Memcpy> {
+public:
+  Expr dest;
+  Expr src;
+  Expr size;
+
+  static Stmt make(Expr dest, Expr src, Expr size);
+
+  static const IRNodeType _type_info = IRNodeType::Memcpy;
+};
+
+struct Memset : public StmtNode<Memset> {
+public:
+  Expr dest;
+  Expr value;
+  Expr size;
+
+  static Stmt make(Expr dest, Expr value, Expr size);
+
+  static const IRNodeType _type_info = IRNodeType::Memset;
 };
 
 /** Compute the size of a type */
